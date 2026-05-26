@@ -9,7 +9,7 @@ GMP_URL="https://ftp.gnu.org/gnu/gmp/${GMP_TARBALL}"
 OUT_DIR="$ROOT/app/src/main/cpp/gmp/lib/ios-arm64"
 BUILD_DIR="$ROOT/build/gmp-ios"
 CACHE_DIR="$ROOT/build"
-MIN_IOS="15.0"
+MIN_IOS="16.0"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "build-gmp-ios.sh requer macOS (Xcode toolchain)." >&2

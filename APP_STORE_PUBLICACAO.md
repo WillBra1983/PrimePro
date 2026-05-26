@@ -12,7 +12,7 @@
 |------|--------|
 | Bundle ID | `com.seuprojeto.primeprofast` |
 | Versão | 1.0 (build 3, alinhado ao Android) |
-| iOS mínimo | 15.0 |
+| iOS mínimo | 16.0 |
 | Conta | Apple Developer Program |
 
 ## Passos resumidos

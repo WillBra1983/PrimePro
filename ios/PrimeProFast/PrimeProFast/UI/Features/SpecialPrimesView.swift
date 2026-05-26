@@ -27,12 +27,14 @@ struct SpecialPrimesView: View {
             return
         }
         loading.wrappedValue = true
+        let selectedTipo = tipo
+        let tipoLabels = tipos
         let out = await Task.detached {
-            switch tipo {
+            switch selectedTipo {
             case 0: return PPFMath.twinPrimes(limit: n, count: q)
             case 1: return PPFMath.sophieGermain(limit: n, count: q)
             default:
-                return "Tipo \(tipos[tipo]): em expansão para iOS — use Primos por Intervalo ou Teste de Primalidade para valores grandes."
+                return "Tipo \(tipoLabels[selectedTipo]): em expansão para iOS — use Primos por Intervalo ou Teste de Primalidade para valores grandes."
             }
         }.value
         result.wrappedValue = out
