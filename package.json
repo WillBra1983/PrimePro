@@ -1,0 +1,17 @@
+{
+  "name": "primeprofast",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PrimeProFast — Android nativo + iOS nativo (C++/GMP compartilhado)",
+  "scripts": {
+    "ios:native": "bash scripts/build-ios-native.sh",
+    "ios:gmp": "bash scripts/build-gmp-ios.sh",
+    "apple:gerar-csr": "powershell -ExecutionPolicy Bypass -File scripts/apple-gerar-csr.ps1",
+    "apple:cer-para-p12": "powershell -ExecutionPolicy Bypass -File scripts/apple-cer-para-p12.ps1",
+    "apple:mobileprovision-base64": "powershell -ExecutionPolicy Bypass -File scripts/apple-mobileprovision-base64.ps1",
+    "ios:github-secrets": "powershell -ExecutionPolicy Bypass -File scripts/ios-prepare-github-secrets.ps1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

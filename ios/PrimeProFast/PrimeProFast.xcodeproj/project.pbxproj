@@ -1,0 +1,397 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000010000000000000001 /* PrimeProFastApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* PrimeProFastApp.swift */; };
+		A10000010000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* ContentView.swift */; };
+		A10000010000000000000003 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* AppState.swift */; };
+		A10000010000000000000004 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* Theme.swift */; };
+		A10000010000000000000005 /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* MenuView.swift */; };
+		A10000010000000000000006 /* ResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* ResultPanel.swift */; };
+		A10000010000000000000007 /* PPFNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* PPFNative.swift */; };
+		A10000010000000000000008 /* PPFBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* PPFBridge.mm */; };
+		A10000010000000000000009 /* IntervalPrimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* IntervalPrimesView.swift */; };
+		A10000010000000000000010 /* RandomPrimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010 /* RandomPrimesView.swift */; };
+		A10000010000000000000011 /* PrimeTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* PrimeTestView.swift */; };
+		A10000010000000000000012 /* SpecialPrimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* SpecialPrimesView.swift */; };
+		A10000010000000000000013 /* LegendreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* LegendreView.swift */; };
+		A10000010000000000000014 /* MersenneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014 /* MersenneView.swift */; };
+		A10000010000000000000015 /* PerfectNumbersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* PerfectNumbersView.swift */; };
+		A10000010000000000000016 /* SecurityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* SecurityView.swift */; };
+		A10000010000000000000017 /* StatisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* StatisticsView.swift */; };
+		A10000010000000000000018 /* PPFMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* PPFMath.swift */; };
+		A10000010000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000010000000000000001 /* PrimeProFastApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeProFastApp.swift; sourceTree = "<group>"; };
+		A20000010000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000010000000000000003 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		A20000010000000000000004 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		A20000010000000000000005 /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuView.swift; sourceTree = "<group>"; };
+		A20000010000000000000006 /* ResultPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultPanel.swift; sourceTree = "<group>"; };
+		A20000010000000000000007 /* PPFNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFNative.swift; sourceTree = "<group>"; };
+		A20000010000000000000008 /* PPFBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PPFBridge.mm; sourceTree = "<group>"; };
+		A20000010000000000000009 /* IntervalPrimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntervalPrimesView.swift; sourceTree = "<group>"; };
+		A20000010000000000000010 /* RandomPrimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomPrimesView.swift; sourceTree = "<group>"; };
+		A20000010000000000000011 /* PrimeTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeTestView.swift; sourceTree = "<group>"; };
+		A20000010000000000000012 /* SpecialPrimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialPrimesView.swift; sourceTree = "<group>"; };
+		A20000010000000000000013 /* LegendreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegendreView.swift; sourceTree = "<group>"; };
+		A20000010000000000000014 /* MersenneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MersenneView.swift; sourceTree = "<group>"; };
+		A20000010000000000000015 /* PerfectNumbersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfectNumbersView.swift; sourceTree = "<group>"; };
+		A20000010000000000000016 /* SecurityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityView.swift; sourceTree = "<group>"; };
+		A20000010000000000000017 /* StatisticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsView.swift; sourceTree = "<group>"; };
+		A20000010000000000000018 /* PPFMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFMath.swift; sourceTree = "<group>"; };
+		A20000010000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000010000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000010000000000000021 /* PrimeProFast-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PrimeProFast-Bridging-Header.h"; sourceTree = "<group>"; };
+		A30000010000000000000001 /* PrimeProFast.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrimeProFast.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000010000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A50000010000000000000002 /* PrimeProFast */,
+				A50000010000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000010000000000000002 /* PrimeProFast */ = {
+			isa = PBXGroup;
+			children = (
+				A50000010000000000000004 /* App */,
+				A50000010000000000000005 /* Native */,
+				A50000010000000000000006 /* UI */,
+				A20000010000000000000019 /* Assets.xcassets */,
+				A20000010000000000000020 /* Info.plist */,
+				A20000010000000000000021 /* PrimeProFast-Bridging-Header.h */,
+			);
+			path = PrimeProFast;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A30000010000000000000001 /* PrimeProFast.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000004 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000001 /* PrimeProFastApp.swift */,
+				A20000010000000000000002 /* ContentView.swift */,
+				A20000010000000000000003 /* AppState.swift */,
+				A20000010000000000000004 /* Theme.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000005 /* Native */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000007 /* PPFNative.swift */,
+				A20000010000000000000008 /* PPFBridge.mm */,
+			);
+			path = Native;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000006 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000005 /* MenuView.swift */,
+				A50000010000000000000007 /* Shared */,
+				A50000010000000000000008 /* Features */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000007 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000006 /* ResultPanel.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000008 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000009 /* IntervalPrimesView.swift */,
+				A20000010000000000000010 /* RandomPrimesView.swift */,
+				A20000010000000000000011 /* PrimeTestView.swift */,
+				A20000010000000000000012 /* SpecialPrimesView.swift */,
+				A20000010000000000000013 /* LegendreView.swift */,
+				A20000010000000000000014 /* MersenneView.swift */,
+				A20000010000000000000015 /* PerfectNumbersView.swift */,
+				A20000010000000000000016 /* SecurityView.swift */,
+				A20000010000000000000017 /* StatisticsView.swift */,
+				A20000010000000000000018 /* PPFMath.swift */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000010000000000000001 /* PrimeProFast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000010000000000000003 /* Build configuration list for PBXNativeTarget "PrimeProFast" */;
+			buildPhases = (
+				A70000010000000000000001 /* Build Native Core */,
+				A70000010000000000000002 /* Sources */,
+				A40000010000000000000001 /* Frameworks */,
+				A70000010000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PrimeProFast;
+			productName = PrimeProFast;
+			productReference = A30000010000000000000001 /* PrimeProFast.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A80000010000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A60000010000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A90000010000000000000001 /* Build configuration list for PBXProject "PrimeProFast" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = pt-BR;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				pt-BR,
+				Base,
+			);
+			mainGroup = A50000010000000000000001;
+			productRefGroup = A50000010000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000010000000000000001 /* PrimeProFast */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A70000010000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000019 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A70000010000000000000001 /* Build Native Core */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build Native Core";
+			outputPaths = (
+				"$(PROJECT_DIR)/../../build/ios-native/libppf_core.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\ncd \"${PROJECT_DIR}/../..\"\nbash scripts/build-ios-native.sh\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A70000010000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000010000000000000001 /* PrimeProFastApp.swift in Sources */,
+				A10000010000000000000002 /* ContentView.swift in Sources */,
+				A10000010000000000000003 /* AppState.swift in Sources */,
+				A10000010000000000000004 /* Theme.swift in Sources */,
+				A10000010000000000000005 /* MenuView.swift in Sources */,
+				A10000010000000000000006 /* ResultPanel.swift in Sources */,
+				A10000010000000000000007 /* PPFNative.swift in Sources */,
+				A10000010000000000000008 /* PPFBridge.mm in Sources */,
+				A10000010000000000000009 /* IntervalPrimesView.swift in Sources */,
+				A10000010000000000000010 /* RandomPrimesView.swift in Sources */,
+				A10000010000000000000011 /* PrimeTestView.swift in Sources */,
+				A10000010000000000000012 /* SpecialPrimesView.swift in Sources */,
+				A10000010000000000000013 /* LegendreView.swift in Sources */,
+				A10000010000000000000014 /* MersenneView.swift in Sources */,
+				A10000010000000000000015 /* PerfectNumbersView.swift in Sources */,
+				A10000010000000000000016 /* SecurityView.swift in Sources */,
+				A10000010000000000000017 /* StatisticsView.swift in Sources */,
+				A10000010000000000000018 /* PPFMath.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000010000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AA0000010000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000010000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../app/src/main/cpp";
+				INFOPLIST_FILE = PrimeProFast/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../../build/ios-native",
+					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
+					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lppf_core",
+					"-lgmp",
+					"-lgmpxx",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000010000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../app/src/main/cpp";
+				INFOPLIST_FILE = PrimeProFast/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../../build/ios-native",
+					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
+					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-lppf_core",
+					"-lgmp",
+					"-lgmpxx",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A90000010000000000000001 /* Build configuration list for PBXProject "PrimeProFast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000010000000000000001 /* Debug */,
+				AA0000010000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A90000010000000000000003 /* Build configuration list for PBXNativeTarget "PrimeProFast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000010000000000000003 /* Debug */,
+				AA0000010000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A80000010000000000000001 /* Project object */;
+}

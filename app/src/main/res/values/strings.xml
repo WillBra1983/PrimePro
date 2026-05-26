@@ -1,0 +1,14 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PrimeProFast</string>
+    <string name="title_activity_main">PrimeProFast</string>
+    <string name="package_name">com.seuprojeto.primeprofast</string>
+    <string name="custom_url_scheme">com.seuprojeto.primeprofast</string>
+    <string name="menu_calculo_primos">Cálculo de Primos</string>
+    <string name="menu_primos_grandes">Primos Grandes</string>
+    <string name="menu_busca_intervalo">Busca em Intervalo</string>
+    <string name="menu_arquivos">Arquivos Gerados</string>
+    <string name="menu_configuracoes">Configurações</string>
+    <string name="navigation_drawer_open">Abrir menu de navegação</string>
+    <string name="navigation_drawer_close">Fechar menu de navegação</string>
+</resources>

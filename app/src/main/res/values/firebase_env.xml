@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Preencha com o mesmo projeto Firebase do Salvation (ou um projeto novo).
+      Origem dos valores: Firebase Console → Configurações do projeto → Seu app Android,
+      ou o arquivo google-services.json (api_key, mobilesdk_app_id, project_id, database_url).
+      google_web_client_id = OAuth 2.0 "Web client" (não o ID do cliente Android) em
+      Google Cloud Console → Credenciais; necessário para o login Google → Firebase.
+
+      Deixe firebase_project_id vazio para desativar login em nuvem (o app compila e o botão Conta avisa).
+    -->
+    <string name="firebase_api_key" translatable="false" />
+    <string name="firebase_application_id" translatable="false" />
+    <string name="firebase_project_id" translatable="false" />
+    <string name="firebase_database_url" translatable="false" />
+    <string name="firebase_storage_bucket" translatable="false" />
+    <string name="google_web_client_id" translatable="false" />
+</resources>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Geração de Primos Grandes"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gere números primos grandes com número específico de bits"
+            android:textSize="14sp"
+            android:layout_marginBottom="24dp" />
+
+        <EditText
+            android:id="@+id/input_bits"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Número de bits (ex: 1024, 2048, 4096)"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <EditText
+            android:id="@+id/input_quantidade"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Quantidade de primos (ex: 5)"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <EditText
+            android:id="@+id/input_nome_arquivo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Nome do arquivo (ex: primos_1024.txt)"
+            android:text="primos_resultado.txt"
+            android:layout_marginBottom="24dp" />
+
+        <Button
+            android:id="@+id/btn_primos_grandes_tela"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gerar Primos Grandes e Mostrar na Tela"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_primos_grandes_txt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gerar Primos Grandes e Salvar em TXT"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/resultado_primos_grandes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:text="=== RESULTADO ===\nClique em um botão para ver o resultado aqui..."
+            android:textIsSelectable="true"
+            android:background="#F0F0F0"
+            android:minHeight="200dp" />
+
+    </LinearLayout>
+</ScrollView> 

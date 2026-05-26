@@ -1,0 +1,100 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.seuprojeto.primeprofast'
+    compileSdkVersion 35
+    
+    // Habilitar BuildConfig para campos customizados
+    buildFeatures {
+        buildConfig true
+    }
+    defaultConfig {
+        applicationId "com.seuprojeto.primeprofast"
+        minSdkVersion 23
+        targetSdkVersion 35
+        versionCode 3
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                cppFlags "-O3 -ffast-math -funroll-loops -DNDEBUG -fomit-frame-pointer"
+            }
+        }
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            // Carregar configurações do keystore de produção
+            def keystorePropertiesFile = rootProject.file('keystore.properties')
+            def keystoreProperties = new Properties()
+            if (keystorePropertiesFile.exists()) {
+                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            } else {
+                // Fallback para debug se keystore.properties não existir
+                storeFile file('debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
+    }
+    
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+            
+            // Configurações de segurança
+            buildConfigField "boolean", "DEBUG_MODE", "false"
+            buildConfigField "String", "SECURITY_KEY", "\"PrimeProFast2024\""
+            
+            // Otimizações para evitar timeout do AAPT2
+            aaptOptions {
+                cruncherEnabled false
+            }
+        }
+    }
+    
+    // Configurações para evitar timeout do AAPT2
+    aaptOptions {
+        noCompress 'png', 'jpg', 'jpeg'
+        ignoreAssetsPattern "!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~"
+    }
+    
+    // Desabilitar lint para release temporariamente
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.activity:activity:1.9.3'
+    implementation 'com.android.billingclient:billing:8.0.0'
+    implementation platform('com.google.firebase:firebase-bom:33.7.0')
+    implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-database'
+    implementation 'com.google.android.gms:play-services-auth:21.2.0'
+} 

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cálculo de Primos até N"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Calcule todos os números primos até um valor máximo N"
+            android:textSize="14sp"
+            android:layout_marginBottom="24dp" />
+
+        <EditText
+            android:id="@+id/input_n"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Valor máximo (ex: 1000000)"
+            android:inputType="number"
+            android:layout_marginBottom="16dp" />
+
+        <Button
+            android:id="@+id/btn_tela"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Calcular e Mostrar na Tela"
+            android:layout_marginBottom="8dp" />
+
+        <Button
+            android:id="@+id/btn_txt"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Calcular e Salvar em TXT"
+            android:layout_marginBottom="24dp" />
+
+        <TextView
+            android:id="@+id/resultado_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:text="=== RESULTADO ===\nClique em um botão para ver o resultado aqui..."
+            android:textIsSelectable="true"
+            android:background="#F0F0F0"
+            android:minHeight="200dp" />
+
+    </LinearLayout>
+</ScrollView> 

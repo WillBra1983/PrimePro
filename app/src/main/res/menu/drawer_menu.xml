@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_calculo_primos"
+            android:icon="@drawable/ic_calculator"
+            android:title="Cálculo de Primos" />
+        
+        <item
+            android:id="@+id/nav_primos_grandes"
+            android:icon="@drawable/ic_numbers"
+            android:title="Primos Grandes" />
+        
+        <item
+            android:id="@+id/nav_busca_intervalo"
+            android:icon="@drawable/ic_search"
+            android:title="Busca em Intervalo" />
+    </group>
+
+    <item android:title="Gerenciamento">
+        <menu>
+            <item
+                android:id="@+id/nav_arquivos"
+                android:icon="@drawable/ic_folder"
+                android:title="Arquivos Gerados" />
+            
+            <item
+                android:id="@+id/nav_configuracoes"
+                android:icon="@drawable/ic_settings"
+                android:title="Configurações" />
+        </menu>
+    </item>
+</menu> 

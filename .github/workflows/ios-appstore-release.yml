@@ -1,0 +1,178 @@
+# Build assinado + IPA + upload TestFlight — sem Mac local.
+# Disparo manual: Actions → iOS App Store → Run workflow.
+#
+# Guia dos segredos (Windows): docs/GITHUB_IOS_APP_STORE.md
+
+name: iOS App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_testflight:
+        description: Enviar IPA ao TestFlight após o build
+        type: boolean
+        default: true
+
+concurrency:
+  group: ios-appstore-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Verificar segredos obrigatórios
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISION_PROFILE_BASE64: ${{ secrets.APPLE_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          UPLOAD_TESTFLIGHT: ${{ inputs.upload_testflight }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_PROVISION_PROFILE_BASE64 \
+            KEYCHAIN_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Secret ausente: $v"
+              missing=1
+            fi
+          done
+          if [ "$UPLOAD_TESTFLIGHT" = "true" ]; then
+            for v in APPSTORE_ISSUER_ID APPSTORE_API_KEY_ID APPSTORE_API_PRIVATE_KEY; do
+              if [ -z "${!v}" ]; then
+                echo "::error::Para TestFlight, configure também: $v"
+                missing=1
+              fi
+            done
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Veja docs/GITHUB_IOS_APP_STORE.md"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Xcode 26 (SDK iOS 26)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.4.1'
+
+      - name: Confirmar versão do Xcode
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -E 'iphoneos|iphonesimulator' || true
+
+      - name: Compilar GMP + núcleo C++ (ppf_core)
+        run: bash scripts/build-ios-native.sh
+
+      - name: Decodificar certificado .p12
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          P12_PASSWORD=$(printf '%s' "$P12_PASSWORD" | tr -d '\n\r\t ')
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          CERT_MAC="$RUNNER_TEMP/build_certificate_mac.p12"
+          KEY_PEM="$RUNNER_TEMP/apple_dist_key.pem"
+          CERT_PEM="$RUNNER_TEMP/apple_dist_cert.pem"
+          B64=$(printf '%s' "$BUILD_CERTIFICATE_BASE64" | tr -d '[:space:]')
+          printf '%s' "$B64" | base64 -D > "$CERT_PATH"
+          test -s "$CERT_PATH"
+          openssl pkcs12 -in "$CERT_PATH" -noout -passin "pass:$P12_PASSWORD"
+          openssl pkcs12 -in "$CERT_PATH" -passin "pass:$P12_PASSWORD" -nocerts -nodes -out "$KEY_PEM"
+          openssl pkcs12 -in "$CERT_PATH" -passin "pass:$P12_PASSWORD" -nokeys -clcerts -out "$CERT_PEM"
+          openssl pkcs12 -export -out "$CERT_MAC" -inkey "$KEY_PEM" -in "$CERT_PEM" \
+            -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 -passout "pass:$P12_PASSWORD"
+          mv "$CERT_MAC" "$CERT_PATH"
+          echo "CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+
+      - name: Importar certificado (.p12)
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-filepath: ${{ runner.temp }}/build_certificate.p12
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          keychain: signing_temp
+          keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
+
+      - name: Instalar perfil App Store
+        env:
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.APPLE_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          PP_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          B64=$(printf '%s' "$BUILD_PROVISION_PROFILE_BASE64" | tr -d '[:space:]')
+          printf '%s' "$B64" | base64 -D > "$PP_PATH"
+          test -s "$PP_PATH"
+          PP_XML="$RUNNER_TEMP/profile.plist"
+          security cms -D -i "$PP_PATH" > "$PP_XML"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$PP_XML")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+          KEYCHAIN_PATH="$HOME/Library/Keychains/signing_temp.keychain-db"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Archive (Release)
+        working-directory: ios/PrimeProFast
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project PrimeProFast.xcodeproj \
+            -scheme PrimeProFast \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PrimeProFast.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            archive \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
+
+      - name: Export IPA (App Store)
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          EXPORT_PLIST="$RUNNER_TEMP/ExportOptions.plist"
+          sed "s/REPLACE_PROFILE_UUID/$PROFILE_UUID/g" ios/ExportOptions-appstore.plist > "$EXPORT_PLIST"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $APPLE_TEAM_ID" "$EXPORT_PLIST" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c "Set :teamID $APPLE_TEAM_ID" "$EXPORT_PLIST"
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/PrimeProFast.xcarchive" \
+            -exportOptionsPlist "$EXPORT_PLIST" \
+            -exportPath "$RUNNER_TEMP/export"
+          IPA=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' | head -1)
+          if [ -z "$IPA" ]; then
+            echo "::error::Nenhum .ipa gerado"
+            exit 1
+          fi
+          echo "IPA_PATH=$IPA" >> "$GITHUB_ENV"
+
+      - name: Guardar IPA como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: primeprofast-ios-ipa
+          path: ${{ env.IPA_PATH }}
+          retention-days: 14
+
+      - name: Upload TestFlight
+        if: inputs.upload_testflight == true
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: ${{ env.IPA_PATH }}
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
