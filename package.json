@@ -9,7 +9,8 @@
     "apple:gerar-csr": "powershell -ExecutionPolicy Bypass -File scripts/apple-gerar-csr.ps1",
     "apple:cer-para-p12": "powershell -ExecutionPolicy Bypass -File scripts/apple-cer-para-p12.ps1",
     "apple:mobileprovision-base64": "powershell -ExecutionPolicy Bypass -File scripts/apple-mobileprovision-base64.ps1",
-    "ios:github-secrets": "powershell -ExecutionPolicy Bypass -File scripts/ios-prepare-github-secrets.ps1"
+    "ios:github-secrets": "powershell -ExecutionPolicy Bypass -File scripts/ios-prepare-github-secrets.ps1",
+    "apple:testar-p12": "powershell -ExecutionPolicy Bypass -File scripts/apple-testar-p12.ps1"
   },
   "keywords": [],
   "author": "",

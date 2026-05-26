@@ -86,6 +86,10 @@ jobs:
         run: |
           set -euo pipefail
           P12_PASSWORD=$(printf '%s' "$P12_PASSWORD" | tr -d '\n\r\t ')
+          if [ -z "$P12_PASSWORD" ]; then
+            echo "::error::APPLE_CERTIFICATE_PASSWORD vazio"
+            exit 1
+          fi
           CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
           CERT_MAC="$RUNNER_TEMP/build_certificate_mac.p12"
           KEY_PEM="$RUNNER_TEMP/apple_dist_key.pem"
@@ -93,19 +97,30 @@ jobs:
           B64=$(printf '%s' "$BUILD_CERTIFICATE_BASE64" | tr -d '[:space:]')
           printf '%s' "$B64" | base64 -D > "$CERT_PATH"
           test -s "$CERT_PATH"
-          openssl pkcs12 -in "$CERT_PATH" -noout -passin "pass:$P12_PASSWORD"
+          if ! openssl pkcs12 -in "$CERT_PATH" -noout -passin "pass:$P12_PASSWORD" 2>/dev/null; then
+            echo "::error::Senha do .p12 incorreta (Mac verify error / invalid password)."
+            echo "Atualize o secret APPLE_CERTIFICATE_PASSWORD no GitHub com a senha EXATA usada ao criar distribution.p12"
+            echo "Teste no Windows: openssl pkcs12 -in distribution.p12 -noout -passin pass:SUA_SENHA"
+            exit 1
+          fi
           openssl pkcs12 -in "$CERT_PATH" -passin "pass:$P12_PASSWORD" -nocerts -nodes -out "$KEY_PEM"
           openssl pkcs12 -in "$CERT_PATH" -passin "pass:$P12_PASSWORD" -nokeys -clcerts -out "$CERT_PEM"
           openssl pkcs12 -export -out "$CERT_MAC" -inkey "$KEY_PEM" -in "$CERT_PEM" \
             -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 -passout "pass:$P12_PASSWORD"
           mv "$CERT_MAC" "$CERT_PATH"
           echo "CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+          {
+            echo "P12_PASSWORD<<P12_EOF"
+            printf '%s' "$P12_PASSWORD"
+            echo
+            echo "P12_EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Importar certificado (.p12)
         uses: apple-actions/import-codesign-certs@v3
         with:
           p12-filepath: ${{ runner.temp }}/build_certificate.p12
-          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          p12-password: ${{ env.P12_PASSWORD }}
           keychain: signing_temp
           keychain-password: ${{ secrets.KEYCHAIN_PASSWORD }}
 
