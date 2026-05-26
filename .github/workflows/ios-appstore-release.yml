@@ -136,13 +136,16 @@ jobs:
           PP_XML="$RUNNER_TEMP/profile.plist"
           security cms -D -i "$PP_PATH" > "$PP_XML"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$PP_XML")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$PP_XML")
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$PP_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
           KEYCHAIN_PATH="$HOME/Library/Keychains/signing_temp.keychain-db"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "Perfil instalado: $PROFILE_NAME ($PROFILE_UUID)"
 
       - name: Archive (Release)
         working-directory: ios/PrimeProFast
@@ -158,6 +161,10 @@ jobs:
             -archivePath "$RUNNER_TEMP/PrimeProFast.xcarchive" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
+            PRODUCT_BUNDLE_IDENTIFIER=com.seuprojeto.primeprofast \
             archive \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
