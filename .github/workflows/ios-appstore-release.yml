@@ -70,11 +70,11 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -E 'iphoneos|iphonesimulator' || true
 
-      - name: Cache GMP iOS (libgmp.a)
+      - name: Cache GMP iOS (libgmp + libgmpxx)
         uses: actions/cache@v4
         with:
           path: app/src/main/cpp/gmp/lib/ios-arm64
-          key: gmp-ios-6.3.0-v2-${{ runner.os }}-${{ hashFiles('scripts/build-gmp-ios.sh') }}
+          key: gmp-ios-6.3.0-cxx-v3-${{ runner.os }}-${{ hashFiles('scripts/build-gmp-ios.sh') }}
 
       - name: Compilar GMP + núcleo C++ (ppf_core)
         run: bash scripts/build-ios-native.sh

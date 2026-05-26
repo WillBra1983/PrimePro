@@ -8,8 +8,13 @@ GMP_LIB="$ROOT/app/src/main/cpp/gmp/lib/ios-arm64"
 # Artefato legado (builds antigos copiavam para a raiz e quebravam o archive)
 rm -f "$IOS_BUILD/libppf_core.a"
 
-if [[ ! -f "$GMP_LIB/lib/libgmp.a" && ! -f "$GMP_LIB/libgmp.a" ]]; then
-  echo "GMP iOS ausente — executando build-gmp-ios.sh"
+gmp_ok() {
+  [[ -f "$GMP_LIB/lib/libgmp.a" || -f "$GMP_LIB/libgmp.a" ]] \
+    && [[ -f "$GMP_LIB/lib/libgmpxx.a" || -f "$GMP_LIB/libgmpxx.a" ]]
+}
+
+if ! gmp_ok; then
+  echo "GMP iOS incompleto (precisa libgmp.a + libgmpxx.a) — executando build-gmp-ios.sh" >&2
   bash "$ROOT/scripts/build-gmp-ios.sh"
 fi
 

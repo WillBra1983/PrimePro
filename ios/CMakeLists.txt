@@ -17,14 +17,14 @@ add_library(ppf_core STATIC
 target_include_directories(ppf_core PUBLIC "${CPP_ROOT}" "${GMP_INCLUDE}")
 target_compile_options(ppf_core PRIVATE -O3 -ffast-math -funroll-loops -DNDEBUG)
 
-if(EXISTS "${GMP_LIB}/lib/libgmp.a")
+if(EXISTS "${GMP_LIB}/lib/libgmp.a" AND EXISTS "${GMP_LIB}/lib/libgmpxx.a")
     set(GMP_A "${GMP_LIB}/lib/libgmp.a")
     set(GMPXX_A "${GMP_LIB}/lib/libgmpxx.a")
-elseif(EXISTS "${GMP_LIB}/libgmp.a")
+elseif(EXISTS "${GMP_LIB}/libgmp.a" AND EXISTS "${GMP_LIB}/libgmpxx.a")
     set(GMP_A "${GMP_LIB}/libgmp.a")
     set(GMPXX_A "${GMP_LIB}/libgmpxx.a")
 else()
-    message(FATAL_ERROR "GMP iOS não encontrado. Rode scripts/build-gmp-ios.sh")
+    message(FATAL_ERROR "GMP iOS incompleto (libgmp.a + libgmpxx.a). Rode scripts/build-gmp-ios.sh")
 endif()
 
 target_link_libraries(ppf_core PUBLIC "${GMP_A}" "${GMPXX_A}")

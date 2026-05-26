@@ -71,6 +71,7 @@ if ! "$GMP_SRC/configure" \
   --prefix="$OUT_DIR" \
   --disable-shared \
   --enable-static \
+  --enable-cxx \
   --disable-assembly \
   --with-pic \
   ABI=64; then
@@ -84,12 +85,9 @@ echo "Compilando GMP (make -j${NCPU}) ..." >&2
 make -j"$NCPU"
 make install
 
-if [[ -f "$OUT_DIR/lib/libgmp.a" && -f "$OUT_DIR/lib/libgmpxx.a" ]]; then
-  echo "GMP iOS OK: $OUT_DIR/lib/libgmp.a" >&2
-elif [[ -f "$OUT_DIR/lib/libgmp.a" ]]; then
-  echo "GMP iOS OK (sem libgmpxx): $OUT_DIR/lib/libgmp.a" >&2
-else
-  echo "libgmp.a nao encontrado apos install em $OUT_DIR" >&2
+if [[ ! -f "$OUT_DIR/lib/libgmp.a" || ! -f "$OUT_DIR/lib/libgmpxx.a" ]]; then
+  echo "libgmp.a/libgmpxx.a nao encontrados apos install em $OUT_DIR" >&2
   find "$OUT_DIR" -name '*.a' >&2 || true
   exit 1
 fi
+echo "GMP iOS OK: $OUT_DIR/lib/libgmp.a $OUT_DIR/lib/libgmpxx.a" >&2
