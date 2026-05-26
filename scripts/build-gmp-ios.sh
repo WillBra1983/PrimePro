@@ -33,10 +33,10 @@ resolve_gmp_source() {
   mkdir -p "$CACHE_DIR"
   local tar_path="$CACHE_DIR/$GMP_TARBALL"
   if [[ ! -f "$tar_path" ]]; then
-    echo "Baixando GMP ${GMP_VERSION} de ${GMP_URL} ..."
+    echo "Baixando GMP ${GMP_VERSION} de ${GMP_URL} ..." >&2
     curl -fsSL --retry 3 --retry-delay 5 -o "$tar_path" "$GMP_URL"
   fi
-  echo "Extraindo ${GMP_TARBALL} ..."
+  echo "Extraindo ${GMP_TARBALL} ..." >&2
   tar -xJf "$tar_path" -C "$CACHE_DIR"
   if [[ ! -f "$extracted/configure" ]]; then
     echo "configure nao encontrado apos extrair: $extracted" >&2
