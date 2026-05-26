@@ -224,7 +224,7 @@
 			);
 			name = "Build Native Core";
 			outputPaths = (
-				"$(PROJECT_DIR)/../../build/ios-native/libppf_core.a",
+				"$(PROJECT_DIR)/../../build/ios-native/Release-iphoneos/libppf_core.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
@@ -314,7 +314,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/../../build/ios-native",
+					"$(PROJECT_DIR)/../../build/ios-native/Release-iphoneos",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
 				);
@@ -351,7 +351,7 @@
 				);
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
-					"$(PROJECT_DIR)/../../build/ios-native",
+					"$(PROJECT_DIR)/../../build/ios-native/Release-iphoneos",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
 				);

@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_BUILD="$ROOT/build/ios-native"
 GMP_LIB="$ROOT/app/src/main/cpp/gmp/lib/ios-arm64"
 
+# Artefato legado (builds antigos copiavam para a raiz e quebravam o archive)
+rm -f "$IOS_BUILD/libppf_core.a"
+
 if [[ ! -f "$GMP_LIB/lib/libgmp.a" && ! -f "$GMP_LIB/libgmp.a" ]]; then
   echo "GMP iOS ausente — executando build-gmp-ios.sh"
   bash "$ROOT/scripts/build-gmp-ios.sh"
@@ -19,11 +22,12 @@ cmake -S "$ROOT/ios" -B "$IOS_BUILD" \
 
 cmake --build "$IOS_BUILD" --config Release --target ppf_core
 
-LIB_A="$(find "$IOS_BUILD" -name 'libppf_core.a' | head -1)"
-if [[ -z "$LIB_A" || ! -f "$LIB_A" ]]; then
+STATIC_LIB="$IOS_BUILD/Release-iphoneos/libppf_core.a"
+if [[ ! -f "$STATIC_LIB" ]]; then
+  STATIC_LIB="$(find "$IOS_BUILD" -path '*/Release-iphoneos/libppf_core.a' -print -quit)"
+fi
+if [[ -z "${STATIC_LIB:-}" || ! -f "$STATIC_LIB" ]]; then
   echo "libppf_core.a nao encontrado em $IOS_BUILD" >&2
   exit 1
 fi
-mkdir -p "$ROOT/build/ios-native"
-cp -f "$LIB_A" "$ROOT/build/ios-native/libppf_core.a"
-echo "Biblioteca nativa iOS: $ROOT/build/ios-native/libppf_core.a"
+echo "Biblioteca nativa iOS: $STATIC_LIB" >&2
