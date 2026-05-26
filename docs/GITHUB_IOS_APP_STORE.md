@@ -125,6 +125,7 @@ open ios/PrimeProFast/PrimeProFast.xcodeproj
 | *No suitable application records* | Crie o app no App Store Connect (etapa 6) |
 | `Cannot determine the Apple ID from Bundle ID 'com.seuprojeto.primeprofast'` (altool 19) | Mesmo que acima: o registro do app no App Store Connect ainda não existe ou o bundle não bate. Crie o app (etapa 6), aguarde 1–2 min e rode o workflow de novo |
 | `90474` / orientações iPad no upload | App universal (iPhone+iPad): incluir `UISupportedInterfaceOrientations~ipad` com as 4 orientações no `Info.plist` (já corrigido no repo) |
+| *Faltam dados de conformidade* (TestFlight) | No App Store Connect: **Nenhum dos algoritmos mencionados acima**. O app só usa matemática/GMP (primos), sem criptografia própria nem rede. `ITSAppUsesNonExemptEncryption` = false no `Info.plist` evita o modal nos próximos builds |
 | Signing / profile | Perfil App Store + UUID no `ExportOptions-appstore.plist` |
 
 ---
