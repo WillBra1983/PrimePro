@@ -17,8 +17,10 @@ keystore.properties
 app/src/main/cpp/gmp/lib/ios-arm64/
 DerivedData/
 
-# GMP source tree (compile locally; não versionar)
+# GMP source tree local (opcional; CI baixa em build/gmp-6.3.0)
 gmp-6.3.0/
+build/gmp-6.3.0/
+build/gmp-6.3.0.tar.xz
 
 # Node (legado Capacitor / scripts)
 node_modules/

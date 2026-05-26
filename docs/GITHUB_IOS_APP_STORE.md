@@ -119,7 +119,8 @@ open ios/PrimeProFast/PrimeProFast.xcodeproj
 
 | Erro | Solução |
 |------|---------|
-| `GMP iOS não encontrado` | Rode `scripts/build-gmp-ios.sh` no Mac |
+| `Fonte GMP não encontrada` / `gmp-6.3.0` | O CI baixa o GMP automaticamente; confira que `scripts/build-gmp-ios.sh` está no repo (push recente) |
+| `GMP iOS não encontrado` | Rode `scripts/build-gmp-ios.sh` no Mac (ou deixe o workflow baixar no runner) |
 | `libppf_core.a` não encontrado | Rode `scripts/build-ios-native.sh` antes do Xcode |
 | *No suitable application records* | Crie o app no App Store Connect (etapa 6) |
 | Signing / profile | Perfil App Store + UUID no `ExportOptions-appstore.plist` |

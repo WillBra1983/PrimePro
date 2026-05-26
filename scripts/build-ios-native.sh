@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_BUILD="$ROOT/build/ios-native"
 GMP_LIB="$ROOT/app/src/main/cpp/gmp/lib/ios-arm64"
 
-if [[ ! -f "$GMP_LIB/libgmp.a" ]]; then
+if [[ ! -f "$GMP_LIB/lib/libgmp.a" && ! -f "$GMP_LIB/libgmp.a" ]]; then
   echo "GMP iOS ausente — executando build-gmp-ios.sh"
   bash "$ROOT/scripts/build-gmp-ios.sh"
 fi
