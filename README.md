@@ -1,5 +1,7 @@
 # PrimeProFast (FastNative) - Calculadora de Números Primos
 
+Repositório: [github.com/WillBra1983/PrimePro](https://github.com/WillBra1983/PrimePro)
+
 ## Visão geral
 
 O **PrimeProFast** é um aplicativo **nativo** (Android e iOS) para análise de números primos e teoria dos números. No Android, a interface é Java (Views); no iOS, SwiftUI. Os cálculos pesados usam o **mesmo núcleo C++/GMP** (algoritmo especializado), via JNI no Android e bridge C no iOS.

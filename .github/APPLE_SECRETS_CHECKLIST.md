@@ -16,9 +16,12 @@ Marque ao configurar em **Settings → Secrets and variables → Actions**.
 - [ ] `APPSTORE_API_KEY_ID`
 - [ ] `APPSTORE_API_PRIVATE_KEY` (arquivo `.p8` completo)
 
-## App Store Connect (antes do 1º upload)
+## App Store Connect (obrigatório antes do 1º upload TestFlight)
 
-- [ ] App criado com bundle `com.seuprojeto.primeprofast`
+Sem isso o passo `upload-testflight-build` falha com: *Cannot determine the Apple ID from Bundle ID*.
+
+- [ ] Em [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list): identificador **App** `com.seuprojeto.primeprofast`
+- [ ] Em [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → **Apps** → **+** → **Novo app** → iOS → bundle `com.seuprojeto.primeprofast` (SKU ex.: `primeprofast-ios-2026`)
 - [ ] Ícone 1024×1024 em `ios/PrimeProFast/PrimeProFast/Assets.xcassets/AppIcon.appiconset/`
 
 ## Gerar base64 no Windows

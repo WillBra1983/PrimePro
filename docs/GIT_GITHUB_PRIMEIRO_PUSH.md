@@ -2,26 +2,24 @@
 
 O repositório local já tem `git init`. Falta criar o remoto e enviar o código.
 
-## 1. Criar repositório vazio no GitHub
+## Repositório
 
-Repositório: **[WillBra1983/PrimePro](https://github.com/WillBra1983/PrimePro)** (vazio, sem README).
+**[WillBra1983/PrimePro](https://github.com/WillBra1983/PrimePro)**
 
-## 2. No PowerShell (raiz do projeto)
+O commit inicial já foi feito localmente. Falta apenas o **push** (login GitHub).
+
+## Push (PowerShell na raiz do projeto)
 
 ```powershell
-cd "c:\Users\Pr Wilson Lucas\Desktop\PrimeProFastNative"
+cd C:\PrimeProFastNative
 
-git add .
-git status
+git remote -v
+# deve mostrar origin → https://github.com/WillBra1983/PrimePro.git
 
-git commit -m "PrimeProFast: Android nativo + iOS (SwiftUI/C++) e CI App Store"
-
-git branch -M main
-git remote add origin https://github.com/WillBra1983/PrimePro.git
 git push -u origin main
 ```
 
-Substitua `SEU_USUARIO` pelo seu login GitHub.
+Se pedir login: use **GitHub CLI** (`gh auth login`) ou o gerenciador de credenciais do Git for Windows.
 
 ## 3. Secrets e workflow
 

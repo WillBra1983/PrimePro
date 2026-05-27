@@ -1,0 +1,11 @@
+Pasta principal do projeto: C:\PrimeProFastNative
+
+- Git: repositório completo (origin → github.com/WillBra1983/PrimePro)
+- Android: .\gradlew.bat :app:assembleDebug | bundleRelease
+- iOS: ios\PrimeProFast\
+- CI: .github\workflows\
+
+Sincronizado em 2026-05-27 a partir da cópia da Área de Trabalho.
+Abra esta pasta no Cursor/Android Studio (não a cópia em Desktop).
+
+Backup local do keystore (se existia só em C:\): C:\PrimeProFastNative_sync_backup_20260526
