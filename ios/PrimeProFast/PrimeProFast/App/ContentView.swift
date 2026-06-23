@@ -18,5 +18,20 @@ struct ContentView: View {
                 }
         }
         .preferredColorScheme(appState.darkMode ? .dark : .light)
+        .fullScreenCover(isPresented: $appState.showDocumentPreview) {
+            if let url = appState.documentPreviewURL {
+                NavigationStack {
+                    PPFDocumentPreview(url: url)
+                        .ignoresSafeArea()
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button("Fechar") {
+                                    appState.showDocumentPreview = false
+                                }
+                            }
+                        }
+                }
+            }
+        }
     }
 }

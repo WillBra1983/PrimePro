@@ -26,6 +26,9 @@
 		A10000010000000000000017 /* StatisticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* StatisticsView.swift */; };
 		A10000010000000000000018 /* PPFMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* PPFMath.swift */; };
 		A10000010000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* Assets.xcassets */; };
+		A10000010000000000000020 /* PPFResultFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* PPFResultFiles.swift */; };
+		A10000010000000000000021 /* PPFDocumentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000026 /* PPFDocumentPreview.swift */; };
+		A10000010000000000000022 /* PPFResultPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000027 /* PPFResultPresenter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +53,9 @@
 		A20000010000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000010000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000010000000000000021 /* PrimeProFast-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PrimeProFast-Bridging-Header.h"; sourceTree = "<group>"; };
+		A20000010000000000000025 /* PPFResultFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFResultFiles.swift; sourceTree = "<group>"; };
+		A20000010000000000000026 /* PPFDocumentPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFDocumentPreview.swift; sourceTree = "<group>"; };
+		A20000010000000000000027 /* PPFResultPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFResultPresenter.swift; sourceTree = "<group>"; };
 		A30000010000000000000001 /* PrimeProFast.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrimeProFast.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -127,6 +133,9 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000006 /* ResultPanel.swift */,
+				A20000010000000000000025 /* PPFResultFiles.swift */,
+				A20000010000000000000026 /* PPFDocumentPreview.swift */,
+				A20000010000000000000027 /* PPFResultPresenter.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -255,6 +264,9 @@
 				A10000010000000000000016 /* SecurityView.swift in Sources */,
 				A10000010000000000000017 /* StatisticsView.swift in Sources */,
 				A10000010000000000000018 /* PPFMath.swift in Sources */,
+				A10000010000000000000020 /* PPFResultFiles.swift in Sources */,
+				A10000010000000000000021 /* PPFDocumentPreview.swift in Sources */,
+				A10000010000000000000022 /* PPFResultPresenter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

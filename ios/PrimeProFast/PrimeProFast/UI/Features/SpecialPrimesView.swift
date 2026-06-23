@@ -4,6 +4,8 @@ struct SpecialPrimesView: View {
     @State private var limite = "10000"
     @State private var quantidade = "10"
     @State private var tipo = 0
+    @EnvironmentObject private var appState: AppState
+
     private let tipos = ["Gêmeos", "Sophie Germain", "Cousins", "Sexy", "Palíndromos", "Fermat"]
 
     var body: some View {
@@ -14,10 +16,16 @@ struct SpecialPrimesView: View {
                 }
             }
             .pickerStyle(.menu)
-            TextField("Limite N", text: $limite).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
-            TextField("Quantidade", text: $quantidade).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
-            Button("Buscar") { Task { await buscar(result: result, loading: loading) } }
-                .buttonStyle(.borderedProminent)
+            TextField("Limite N", text: $limite)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+            TextField("Quantidade", text: $quantidade)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+            Button("Buscar") {
+                Task { await buscar(result: result, loading: loading) }
+            }
+            .buttonStyle(.borderedProminent)
         }
     }
 
@@ -37,7 +45,13 @@ struct SpecialPrimesView: View {
                 return "Tipo \(tipoLabels[selectedTipo]): em expansão para iOS — use Primos por Intervalo ou Teste de Primalidade para valores grandes."
             }
         }.value
-        result.wrappedValue = out
-        loading.wrappedValue = false
+        await MainActor.run {
+            loading.wrappedValue = false
+            appState.saveTemporaryResultAndOpenViewer(
+                out,
+                prefix: "primos_especiais",
+                statusMessage: result
+            )
+        }
     }
 }

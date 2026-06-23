@@ -10,8 +10,19 @@ struct RandomPrimesView: View {
             title: "Primos Aleatórios",
             subtitle: "Acima de \(appState.limiarBitsNativo) bits usa job nativo assíncrono."
         ) { result, loading in
-            TextField("Quantidade (1–50)", text: $quantidade).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
-            TextField("Bits por primo", text: $bits).keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+            TextField("Quantidade (1–50)", text: $quantidade)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+            TextField("Bits por primo", text: $bits)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+
+            Text(
+                "ℹ️ Por se tratar de busca aleatória, o tempo pode variar. "
+                + "Se demorar muito, cancele e tente novamente."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             Button("Gerar primos aleatórios") {
                 Task { await gerar(result: result, loading: loading) }
@@ -33,34 +44,70 @@ struct RandomPrimesView: View {
             result.wrappedValue = "Quantidade 1–50 e bits 1–33000."
             return
         }
+
         appState.cancelRequested = false
         loading.wrappedValue = true
+        result.wrappedValue = "🚀 INICIANDO GERAÇÃO…\n   Buscando primos grandes com algoritmos otimizados."
 
-        let output = await PPFNative.run {
-            if appState.shouldUseNativeRoute(bits: b) {
-                let file = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("primos_job_\(UUID().uuidString).txt")
-                return PPFNative.executarJob(
-                    bits: b,
-                    quantidade: q,
-                    threads: ProcessInfo.processInfo.processorCount,
-                    caminho: file,
-                    onStatus: { status in
-                        Task { @MainActor in
-                            result.wrappedValue = status
-                        }
-                    },
-                    shouldCancel: { appState.cancelRequested }
-                )
-            }
-            return PPFNative.gerarPrimosGrandes(
-                bits: Int32(b),
-                quantidade: Int32(q),
-                arquivo: nil,
-                salvar: false
+        let limiar = appState.limiarBitsNativo
+        let report = await PPFNative.run {
+            buildRandomPrimesReport(
+                bits: b,
+                quantity: q,
+                limiarNativo: limiar,
+                shouldCancel: { appState.cancelRequested },
+                onStatus: { status in
+                    Task { @MainActor in
+                        result.wrappedValue = status
+                    }
+                }
             )
         }
-        result.wrappedValue = output
-        loading.wrappedValue = false
+
+        await MainActor.run {
+            loading.wrappedValue = false
+            if appState.cancelRequested && report.contains("cancelad") {
+                result.wrappedValue = report
+                return
+            }
+            appState.saveTemporaryResultAndOpenViewer(report, prefix: "primos_aleatorios_bits", statusMessage: result)
+        }
+    }
+
+    /// Espelha `executarThreadPrimosAleatorios` no Android.
+    private func buildRandomPrimesReport(
+        bits: Int,
+        quantity: Int,
+        limiarNativo: Int,
+        shouldCancel: @escaping () -> Bool,
+        onStatus: @escaping (String) -> Void
+    ) -> String {
+        let usarRotaNativa = bits > limiarNativo
+        let arquivoPrimos: URL
+        do {
+            arquivoPrimos = try PPFResultFiles.createTempGiganticPrimesFile(prefix: "primos_gigantes_")
+        } catch {
+            return "Erro ao criar arquivo temporário: \(error.localizedDescription)"
+        }
+
+        if usarRotaNativa {
+            let relatorio = PPFNative.executarJob(
+                bits: bits,
+                quantidade: quantity,
+                threads: ProcessInfo.processInfo.processorCount,
+                caminho: arquivoPrimos,
+                onStatus: onStatus,
+                shouldCancel: shouldCancel
+            )
+            return PPFResultFiles.appendFullDecimals(from: arquivoPrimos, to: relatorio)
+        }
+
+        let relatorio = PPFNative.gerarPrimosGrandes(
+            bits: Int32(bits),
+            quantidade: Int32(quantity),
+            arquivo: arquivoPrimos.path,
+            salvar: true
+        )
+        return PPFResultFiles.appendFullDecimals(from: arquivoPrimos, to: relatorio)
     }
 }

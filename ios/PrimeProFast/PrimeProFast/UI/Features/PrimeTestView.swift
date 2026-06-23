@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PrimeTestView: View {
     @State private var entrada = "97"
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         FeatureScaffold(
@@ -29,13 +30,47 @@ struct PrimeTestView: View {
             result.wrappedValue = "Máximo: 10.000 dígitos."
             return
         }
+
         loading.wrappedValue = true
         result.wrappedValue = "⏳ Testando primalidade…"
+
+        let inicio = Date()
         let primo: Bool = await PPFNative.run {
             PPFNative.testarPrimalidade(numero, repeticoes: 25)
         }
+        let tempo = Date().timeIntervalSince(inicio)
+
         let status = primo ? "✅ É PRIMO" : "❌ É COMPOSTO (ou 1)"
-        result.wrappedValue = "Entrada: \(numero)\nDígitos: \(numero.count)\n\n\(status)"
-        loading.wrappedValue = false
+        let relatorio = """
+        🔍 TESTE DE PRIMALIDADE
+        =======================
+
+        📊 ENTRADA:
+           • Número: \(numero)
+           • Dígitos: \(numero.count)
+
+        📋 RESULTADO:
+           • Status: \(status)
+
+        ⏱️ TEMPO DE EXECUÇÃO: \(String(format: "%.3f", tempo)) s
+        ⏰ TIMESTAMP: \(formattedNow())
+        💡 Se quiser informações estatísticas mais detalhadas, use a função Estatísticas.
+        """
+
+        await MainActor.run {
+            loading.wrappedValue = false
+            appState.saveTemporaryResultAndOpenViewer(
+                relatorio,
+                prefix: "teste_primalidade",
+                statusMessage: result
+            )
+        }
+    }
+
+    private func formattedNow() -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "pt_BR")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f.string(from: Date())
     }
 }

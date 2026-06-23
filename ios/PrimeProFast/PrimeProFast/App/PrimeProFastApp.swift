@@ -4,6 +4,10 @@ import SwiftUI
 struct PrimeProFastApp: App {
     @StateObject private var appState = AppState()
 
+    init() {
+        PPFResultFiles.purgeOldTemporaryResults()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
