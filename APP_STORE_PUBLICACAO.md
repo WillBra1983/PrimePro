@@ -29,7 +29,7 @@
 - **Subtítulo:** Calculadora de números primos
 - **Categoria:** Educação ou Utilitários
 - **Política de privacidade:** URL pública (pode usar texto de [PRIVACY_POLICY.md](PRIVACY_POLICY.md))
-- **Screenshots:** iPhone 6,7" e 6,5" (obrigatórios)
+- **Screenshots:** iPhone 6,7" e 6,5" (obrigatórios). App **somente iPhone** — não exige capturas de iPad.
 
 ## StoreKit (Premium)
 

@@ -124,7 +124,7 @@ open ios/PrimeProFast/PrimeProFast.xcodeproj
 | `libppf_core.a` não encontrado | Rode `scripts/build-ios-native.sh` antes do Xcode |
 | *No suitable application records* | Crie o app no App Store Connect (etapa 6) |
 | `Cannot determine the Apple ID from Bundle ID 'com.seuprojeto.primeprofast'` (altool 19) | Mesmo que acima: o registro do app no App Store Connect ainda não existe ou o bundle não bate. Crie o app (etapa 6), aguarde 1–2 min e rode o workflow de novo |
-| `90474` / orientações iPad no upload | App universal (iPhone+iPad): incluir `UISupportedInterfaceOrientations~ipad` com as 4 orientações no `Info.plist` (já corrigido no repo) |
+| `90474` / orientações iPad no upload | App é **somente iPhone** (`TARGETED_DEVICE_FAMILY = 1`); não declare iPad no Xcode nem no App Store Connect |
 | *Faltam dados de conformidade* (TestFlight) | No App Store Connect: **Nenhum dos algoritmos mencionados acima**. O app só usa matemática/GMP (primos), sem criptografia própria nem rede. `ITSAppUsesNonExemptEncryption` = false no `Info.plist` evita o modal nos próximos builds |
 | **-19232** / *bundle version must be higher* / build `4` já usado | O workflow define `CURRENT_PROJECT_VERSION` automaticamente (`run_number + 4`). Faça push das alterações recentes e rode de novo; se falhar, confira no log a linha `Build iOS (CFBundleVersion):` |
 | Signing / profile | Perfil App Store + UUID no `ExportOptions-appstore.plist` |
