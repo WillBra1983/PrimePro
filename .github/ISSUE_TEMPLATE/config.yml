@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Política de privacidade (repositório)
+    url: https://github.com/WillBra1983/PrimePro/blob/main/PRIVACY_POLICY.md
+    about: Texto da política de privacidade no GitHub
+  - name: E-mail do desenvolvedor
+    url: mailto:prwilsonlucas@gmail.com?subject=PrimeProFast%20%E2%80%94%20suporte
+    about: Contato direto por e-mail
