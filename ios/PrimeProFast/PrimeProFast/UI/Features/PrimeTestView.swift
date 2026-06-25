@@ -7,7 +7,7 @@ struct PrimeTestView: View {
     var body: some View {
         FeatureScaffold(
             title: "Teste de Primalidade",
-            subtitle: "Números grandes usam GMP nativo (mesmo algoritmo do Android)."
+            subtitle: "Números grandes usam GMP nativo no dispositivo."
         ) { result, loading in
             TextField("Número decimal", text: $entrada)
                 .textFieldStyle(.roundedBorder)

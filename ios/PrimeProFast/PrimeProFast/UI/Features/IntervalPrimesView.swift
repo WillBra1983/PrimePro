@@ -9,7 +9,7 @@ struct IntervalPrimesView: View {
     var body: some View {
         FeatureScaffold(
             title: "Primos por Intervalo",
-            subtitle: "Engine nativa C++/GMP — mesmo núcleo do Android."
+            subtitle: "Engine nativa C++/GMP — cálculos no próprio iPhone."
         ) { result, loading in
             TextField("Valor máximo N", text: $maxN)
                 .keyboardType(.numberPad)
