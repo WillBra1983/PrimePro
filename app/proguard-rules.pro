@@ -21,13 +21,8 @@
 }
 
 # Manter atributos essenciais
--keepattributes InnerClasses,EnclosingMethod
+-keepattributes InnerClasses,EnclosingMethod,Signature,*Annotation*
 
 # Remover classes não utilizadas
 -dontwarn **
 -ignorewarnings
-
-# Firebase (Auth + Realtime Database)
--keepattributes Signature,*Annotation*
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }

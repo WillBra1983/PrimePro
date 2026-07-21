@@ -1,7 +1,10 @@
 package com.seuprojeto.primeprofast;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.content.ContentValues;
+import android.provider.MediaStore;
 import android.widget.*;
 import android.util.Log;
 import android.view.View;
@@ -10,7 +13,6 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.Typeface;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.Manifest;
@@ -18,16 +20,13 @@ import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.app.AlertDialog;
 import android.text.InputType;
-import android.view.Gravity;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import com.google.firebase.auth.FirebaseUser;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -114,12 +113,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean isPremium = false;
     private PlayBillingManager playBillingManager;
 
-    /** Login Firebase (mesmo padrão conceitual do projeto Salvation: Auth + RTDB userSearch). */
-    private PrimeProFirebaseAuth firebaseConta;
-    private ActivityResultLauncher<Intent> googleSignLauncher;
-    /** Botão do cabeçalho “Conta” (texto muda com o login). */
-    private Button btnHeaderConta;
-    
     // Contadores por card
     private int cardCalculations = 0;
     private String currentCard = "";
@@ -717,14 +710,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        googleSignLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    if (firebaseConta != null) {
-                        firebaseConta.handleGoogleActivityResult(result.getData());
-                    }
-                });
-
         // Verificações de segurança
         if (!verificarSeguranca()) {
             return;
@@ -733,15 +718,7 @@ public class MainActivity extends AppCompatActivity {
         // Inicializar preferências e tema
         preferences = getSharedPreferences("PrimeProFast", MODE_PRIVATE);
 
-        if (FirebaseBootstrap.ensureInitialized(this)) {
-            firebaseConta = new PrimeProFirebaseAuth(this, googleSignLauncher);
-            firebaseConta.setListener(user -> runOnUiThread(() -> atualizarRotuloContaHeader(user)));
-            firebaseConta.start();
-        } else {
-            firebaseConta = null;
-        }
-        
-        // Inicializar sistema de monetização
+        // Inicializar sistema de monetização (Google Play Billing — sem login Firebase)
         inicializarSistemaMonetizacao();
         playBillingManager = new PlayBillingManager(this);
         playBillingManager.start(new PlayBillingManager.Listener() {
@@ -822,30 +799,6 @@ public class MainActivity extends AppCompatActivity {
 
         headerLayout.addView(titulo);
 
-        LinearLayout contaRow = new LinearLayout(this);
-        contaRow.setOrientation(LinearLayout.HORIZONTAL);
-        contaRow.setGravity(Gravity.END);
-        LinearLayout.LayoutParams contaRowLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        contaRowLp.setMargins(0, dpUi(6), 0, 0);
-        contaRow.setLayoutParams(contaRowLp);
-        Button btnConta = new Button(this);
-        btnConta.setText("Conta");
-        btnConta.setTextSize(13);
-        btnConta.setTypeface(null, Typeface.BOLD);
-        btnConta.setTextColor(Color.WHITE);
-        btnConta.setAllCaps(false);
-        GradientDrawable contaBg = new GradientDrawable();
-        contaBg.setCornerRadius(dpUi(8));
-        contaBg.setColor(Color.argb(100, 255, 255, 255));
-        btnConta.setBackground(contaBg);
-        btnConta.setPadding(dpUi(16), dpUi(8), dpUi(16), dpUi(8));
-        btnConta.setOnClickListener(v -> mostrarDialogContaFirebase());
-        contaRow.addView(btnConta);
-        headerLayout.addView(contaRow);
-        btnHeaderConta = btnConta;
-
         rootMainLayout.addView(headerLayout);
 
         // Container do menu (dentro de um ScrollView para permitir rolagem vertical de todos os cards)
@@ -896,152 +849,6 @@ public class MainActivity extends AppCompatActivity {
         
         // Aplicar tema inicial se necessário
         aplicarTemaInicial();
-        if (firebaseConta != null) {
-            atualizarRotuloContaHeader(firebaseConta.getCurrentUser());
-        }
-    }
-
-    private void atualizarRotuloContaHeader(@Nullable FirebaseUser user) {
-        if (btnHeaderConta == null) {
-            return;
-        }
-        if (user == null) {
-            btnHeaderConta.setText("Conta");
-            return;
-        }
-        String label = user.getEmail();
-        if (label == null || label.isEmpty()) {
-            label = user.getDisplayName();
-        }
-        if (label == null || label.isEmpty()) {
-            label = "Logado";
-        }
-        if (label.length() > 20) {
-            label = label.substring(0, 17) + "…";
-        }
-        btnHeaderConta.setText("Conta: " + label);
-    }
-
-    /**
-     * Conta Firebase (Google + e-mail) e leitura de {@code userSearch} como no Salvation.
-     */
-    private void mostrarDialogContaFirebase() {
-        if (firebaseConta == null) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Conta")
-                    .setMessage("Firebase não configurado. Preencha em app/src/main/res/values/firebase_env.xml "
-                            + "os campos firebase_api_key, firebase_application_id, firebase_project_id, "
-                            + "firebase_database_url e google_web_client_id (OAuth Web do mesmo projeto).")
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show();
-            return;
-        }
-
-        FirebaseUser u = firebaseConta.getCurrentUser();
-        if (u != null) {
-            String uid = u.getUid() != null ? u.getUid() : "";
-            String info = "UID: " + uid + "\n\n"
-                    + (u.getEmail() != null ? u.getEmail() : "(sem e-mail)") + "\n"
-                    + (u.getDisplayName() != null ? u.getDisplayName() : "");
-
-            new AlertDialog.Builder(this)
-                    .setTitle("Conta conectada")
-                    .setMessage(info)
-                    .setNegativeButton("Sair", (d, w) -> firebaseConta.signOut())
-                    .setNeutralButton("Listar usuários (userSearch)", (d, w) -> firebaseConta.fetchUserList((rows, err) -> runOnUiThread(() -> {
-                        if (err != null) {
-                            Toast.makeText(MainActivity.this, err, Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        StringBuilder sb = new StringBuilder();
-                        sb.append("Total: ").append(rows.size()).append("\n\n");
-                        int n = 0;
-                        for (PrimeProFirebaseAuth.UserRow row : rows) {
-                            sb.append(row.toString()).append("\n\n");
-                            if (++n >= 200) {
-                                sb.append("… (lista truncada em 200)");
-                                break;
-                            }
-                        }
-                        ScrollView sv = new ScrollView(this);
-                        TextView tv = new TextView(this);
-                        tv.setPadding(dpUi(12), dpUi(8), dpUi(12), dpUi(8));
-                        tv.setTextIsSelectable(true);
-                        tv.setTextSize(13);
-                        tv.setText(sb.toString());
-                        sv.addView(tv);
-                        new AlertDialog.Builder(this)
-                                .setTitle("userSearch (Realtime DB)")
-                                .setView(sv)
-                                .setPositiveButton(android.R.string.ok, null)
-                                .show();
-                    })))
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show();
-            return;
-        }
-
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        int pad = dpUi(12);
-        box.setPadding(pad, pad, pad, pad);
-
-        final EditText etEmail = new EditText(this);
-        etEmail.setHint("E-mail");
-        etEmail.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        estilizarCampoEntrada(etEmail);
-        box.addView(etEmail);
-
-        final EditText etSenha = new EditText(this);
-        etSenha.setHint("Senha");
-        etSenha.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        estilizarCampoEntrada(etSenha);
-        box.addView(etSenha);
-
-        AlertDialog dlg = new AlertDialog.Builder(this)
-                .setTitle("Entrar ou cadastrar")
-                .setView(box)
-                .setPositiveButton("Entrar", null)
-                .setNeutralButton("Cadastrar", null)
-                .setNegativeButton("Google", null)
-                .create();
-
-        dlg.setOnShowListener(di -> {
-            Button pos = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
-            Button neu = dlg.getButton(AlertDialog.BUTTON_NEUTRAL);
-            Button neg = dlg.getButton(AlertDialog.BUTTON_NEGATIVE);
-            if (pos != null) {
-                pos.setOnClickListener(v -> {
-                    String em = etEmail.getText().toString().trim();
-                    String pw = etSenha.getText().toString();
-                    if (em.isEmpty() || pw.isEmpty()) {
-                        Toast.makeText(this, "Preencha e-mail e senha.", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    firebaseConta.signInEmailPassword(em, pw);
-                    dlg.dismiss();
-                });
-            }
-            if (neu != null) {
-                neu.setOnClickListener(v -> {
-                    String em = etEmail.getText().toString().trim();
-                    String pw = etSenha.getText().toString();
-                    if (em.isEmpty() || pw.isEmpty()) {
-                        Toast.makeText(this, "Preencha e-mail e senha.", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    firebaseConta.registerEmailPassword(em, pw);
-                    dlg.dismiss();
-                });
-            }
-            if (neg != null) {
-                neg.setOnClickListener(v -> {
-                    firebaseConta.beginGoogleSignIn();
-                    dlg.dismiss();
-                });
-            }
-        });
-        dlg.show();
     }
 
     private void criarMenu() {
@@ -2231,24 +2038,18 @@ public class MainActivity extends AppCompatActivity {
                         registrarCalculo();
                         registrarCalculoCard();
 
-                        // Salvar em arquivo TXT (SISTEMA ORIGINAL)
+                        // Salvar em arquivo TXT (Downloads/PrimeProFast via MediaStore em Android 10+)
                         try {
                             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
                             String fileName = "primos_" + n + "_" + timestamp + ".txt";
-                            File file = new File(getPrimeProFastDirectory(), fileName);
+                            String caminhoSalvo = salvarTxtDownloadsPrimeProFast(fileName, resultado);
 
-                            FileWriter writer = new FileWriter(file);
-                            writer.write(resultado);
-                            writer.close();
-
-                            Log.d(TAG, "Arquivo TXT criado: " + file.getAbsolutePath());
+                            Log.d(TAG, "Arquivo TXT criado: " + caminhoSalvo);
 
                             runOnUiThread(() -> {
-                                resultadoView.setText("Arquivo salvo com sucesso em: " + file.getAbsolutePath());
+                                resultadoView.setText("Arquivo salvo com sucesso em:\n" + caminhoSalvo);
                                 scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_UP));
-
-                                // Apenas mostrar mensagem de sucesso - não abrir arquivo
-                                Toast.makeText(this, "Arquivo salvo em: " + file.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                                Toast.makeText(this, "Arquivo salvo em: " + caminhoSalvo, Toast.LENGTH_LONG).show();
                             });
                         } catch (IOException e) {
                             Log.e(TAG, "Erro ao salvar arquivo TXT", e);
@@ -6858,6 +6659,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestStoragePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return;
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISSION_REQUEST_CODE);
         }
@@ -6980,7 +6784,42 @@ public class MainActivity extends AppCompatActivity {
     }
     
     /**
-     * Cria a pasta PrimeProFast no Downloads e retorna o caminho
+     * Salva TXT em Downloads/PrimeProFast sem MANAGE_EXTERNAL_STORAGE.
+     * Android 10+ (API 29+): MediaStore. Android 9 e anteriores: pasta pública com permissão legada.
+     */
+    private String salvarTxtDownloadsPrimeProFast(String fileName, String conteudo) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/PrimeProFast");
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                throw new IOException("Não foi possível criar o arquivo em Downloads/PrimeProFast");
+            }
+            try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                if (os == null) {
+                    throw new IOException("Não foi possível abrir o arquivo para escrita");
+                }
+                os.write(conteudo.getBytes(StandardCharsets.UTF_8));
+            }
+            values.clear();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            getContentResolver().update(uri, values, null, null);
+            return "Downloads/PrimeProFast/" + fileName;
+        }
+
+        File file = new File(getPrimeProFastDirectory(), fileName);
+        try (FileWriter writer = new FileWriter(file)) {
+            writer.write(conteudo);
+        }
+        return file.getAbsolutePath();
+    }
+
+    /**
+     * Cria a pasta PrimeProFast no Downloads (Android 9 e anteriores).
      */
     private File getPrimeProFastDirectory() {
         File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);

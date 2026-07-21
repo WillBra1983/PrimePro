@@ -1,0 +1,46 @@
+PrimePro Fast — calculadora avançada de números primos para Android, com motor nativo ultrarrápido (C++ e GMP). Cada card do menu tem botão TUTORIAL: abre guia HTML no visualizador do aparelho, com seções “O que faz”, “Como usar” e contexto matemático. O Teste de Primalidade inclui aula ampliada em 5 capítulos (definição, distribuição, primos especiais, métodos de teste e uso prático).
+
+——— TUTORIAIS ———
+Toque TUTORIAL no card desejado antes ou depois de calcular. Os textos seguem o conteúdo real do app — linguagem acessível, exemplos e avisos sobre limites de tempo e tamanho.
+
+🔢 PRIMOS POR INTERVALO
+Função: informe limite N (ou intervalo) e liste todos os primos de 2 até N. Calcule na tela, salve TXT ou abra lista completa no visualizador.
+Tutorial: explica o crivo de Eratóstenes como ferramenta prática; como digitar o limite; por que N grande demora; dica de começar com valores moderados; resultados podem ser guardados ou partilhados.
+
+⭐ PRIMOS ESPECIAIS
+Função: escolha tipo (gêmeos p e p+2, Sophie Germain p e 2p+1, cousins p+4, sexy p+6, palíndromos, Fermat 2^(2^n)+1), quantidade e limite superior.
+Tutorial: diferencia de “listar todos até N”; define cada família; como preencher campos; ligação com conjecturas abertas (ex.: infinitos primos gêmeos).
+
+🎲 PRIMOS ALEATÓRIOS
+Função: defina quantos primos e tamanho em bits; o app testa candidatos aleatórios até completar — poucos primos muito grandes, não uma lista até N.
+Tutorial: contraste com intervalo; importância em HTTPS, bancos e criptografia; comece com poucos bits; aviso sobre tempo em buscas aleatórias e projetos como primos de Mersenne.
+
+🧮 CONJECTURA DE LEGENDRE
+Função: para cada n no intervalo indicado, verifica se existe primo entre n² e (n+1)².
+Tutorial: enunciado da conjectura (ainda não provada em geral); o que o card testa numericamente; interpretar como evidência no trecho, não prova para todo n.
+
+⚡ NÚMEROS DE MERSENNE
+Função: informe expoente p; calcula M(p)=2^p−1, verifica se p é primo, testa primalidade de M(p) e compara com expoentes já conhecidos.
+Tutorial: história de Marin Mersenne; nem todo p primo gera Mersenne primo; ligação Euclides/Euler com números perfeitos pares.
+
+✨ NÚMEROS PERFEITOS
+Função: verificar candidato, buscar exemplos ou modos educativos conforme os botões da tela — liga definição a experimentos numéricos.
+Tutorial: perfeito = soma dos divisores próprios (ex.: 6=1+2+3); perfeitos pares ligados a Mersenne; perfeito ímpar desconhecido — problema em aberto.
+
+🔐 SEGURANÇA DIGITAL
+Função: demonstração didática — geração de chaves RSA, criptografia/descriptografia de exemplo, hash criptográfico e assinatura digital.
+Tutorial: aprendizado do fluxo RSA; primos grandes na segurança; multiplicar primos é fácil, fatorar o produto é difícil; não substitui software bancário nem normas profissionais.
+
+🔍 TESTE DE PRIMALIDADE
+Função: digite inteiro ou expressão (^, somas, produtos); calcula valor, responde primo/composto e fatora quando viável.
+Tutorial unificado: “multímetro” do app; primo vs composto vs 1; limites para números enormes. Aula HTML estendida: Cap.1 definição e fatoração única; Cap.2 distribuição e π(x); Cap.3 Mersenne e famílias; Cap.4 métodos de teste; Cap.5 uso no app.
+
+📊 ESTATÍSTICAS
+Função: visão geral — contagem de primos até limite, densidade, comparação com aproximações clássicas (π(n), rarefação).
+Tutorial: painel-resumo da “floresta” dos primos; subir limites gradualmente; conectar teorema dos números primos com dados gerados no celular.
+
+——— TECNOLOGIA ———
+Algoritmo especializado nativo, multithread, exportação de resultados, tema claro/escuro. Cálculos no dispositivo; foco educacional e pesquisa.
+
+PrimePro Fast — do intervalo escolar ao tamanho criptográfico, com tutorial em cada função.
+Desenvolvido por Wilson Lucas Ferreira.
