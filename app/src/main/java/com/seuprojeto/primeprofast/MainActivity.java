@@ -7502,7 +7502,7 @@ public class MainActivity extends AppCompatActivity {
         // Informações do app
         String[] informacoes = {
             "📱 Nome: PrimeProFast",
-            "📦 Versão: 1.0.0",
+            "📦 Versão: 1.0.3",
             "📅 Data: Setembro 2025",
             "",
             "👨‍💻 Desenvolvido por:",

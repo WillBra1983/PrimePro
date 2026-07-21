@@ -315,7 +315,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../app/src/main/cpp";
@@ -330,7 +330,7 @@
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.3;
 				OTHER_LDFLAGS = (
 					"-lppf_core",
 					"-lgmp",
@@ -352,7 +352,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/../../app/src/main/cpp";
@@ -367,7 +367,7 @@
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64/lib",
 					"$(PROJECT_DIR)/../../app/src/main/cpp/gmp/lib/ios-arm64",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.3;
 				OTHER_LDFLAGS = (
 					"-lppf_core",
 					"-lgmp",
