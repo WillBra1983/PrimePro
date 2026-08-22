@@ -9,6 +9,8 @@ import android.widget.*;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
+import android.view.WindowManager;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.Typeface;
@@ -56,6 +58,22 @@ public class MainActivity extends AppCompatActivity {
      * matar o processo (OOM); por isso 8193 deve usar nativo, não Java.
      */
     private static final int LIMIAR_BITS_ROTA_NATIVA = 8192;
+    private static final int LIGHT_BG_TOP = Color.rgb(246, 248, 251);
+    private static final int LIGHT_BG_BOTTOM = Color.rgb(232, 239, 247);
+    private static final int LIGHT_SURFACE = Color.rgb(255, 255, 255);
+    private static final int LIGHT_SURFACE_RAISED = Color.rgb(247, 250, 252);
+    private static final int LIGHT_TEXT = Color.rgb(20, 32, 51);
+    private static final int LIGHT_TEXT_MUTED = Color.rgb(92, 105, 122);
+    private static final int LIGHT_BORDER = Color.rgb(214, 225, 236);
+    private static final int DARK_BG_TOP = Color.rgb(14, 19, 26);
+    private static final int DARK_BG_BOTTOM = Color.rgb(22, 30, 41);
+    private static final int DARK_SURFACE = Color.rgb(26, 34, 46);
+    private static final int DARK_SURFACE_RAISED = Color.rgb(32, 42, 57);
+    private static final int DARK_TEXT = Color.rgb(238, 243, 248);
+    private static final int DARK_TEXT_MUTED = Color.rgb(170, 182, 197);
+    private static final int DARK_BORDER = Color.rgb(54, 68, 88);
+    private static final int BRAND_PRIMARY = Color.rgb(29, 78, 137);
+    private static final int BRAND_SECONDARY = Color.rgb(46, 125, 111);
 
     /**
      * Destino do pedido de “entrega por e-mail” de primos &gt;8192 bits (após compra in-app na Play).
@@ -75,10 +93,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView resultadoView;
     private ScrollView scrollView;
     private ScrollView menuScrollView;
+    private ScrollView contentScrollView;
     private LinearLayout menuContainer;
     private LinearLayout contentContainer;
     /** Layout raiz (gradiente de fundo). */
     private LinearLayout rootMainLayout;
+    private Button btnTema;
     
     // Variável para controle de parada do usuário
     private volatile boolean paradaUsuario = false;
@@ -174,20 +194,23 @@ public class MainActivity extends AppCompatActivity {
     private Button criarBotaoModerno(String texto, int corPrimaria, int corSecundaria) {
         Button botao = new Button(this);
         botao.setText(texto);
+        botao.setTag("ppf_action");
+        botao.setAllCaps(false);
         
         // Configurar layout
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        params.setMargins(0, 8, 0, 8);
+        params.setMargins(0, dpUi(6), 0, dpUi(6));
         botao.setLayoutParams(params);
         
         // Configurar padding
-        botao.setPadding(24, 16, 24, 16);
+        botao.setMinHeight(dpUi(50));
+        botao.setPadding(dpUi(18), dpUi(11), dpUi(18), dpUi(11));
         
         // Configurar texto
-        botao.setTextSize(16);
+        botao.setTextSize(15);
         botao.setTextColor(Color.WHITE);
         botao.setTypeface(null, Typeface.BOLD);
         
@@ -195,28 +218,135 @@ public class MainActivity extends AppCompatActivity {
         GradientDrawable gradient = new GradientDrawable();
         gradient.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
         gradient.setColors(new int[]{corPrimaria, corSecundaria});
-        gradient.setCornerRadius(25);
-        gradient.setStroke(2, Color.WHITE);
+        gradient.setCornerRadius(dpUi(8));
         
         // Aplicar gradiente
         botao.setBackground(gradient);
         
         // Adicionar elevação (sombra)
-        botao.setElevation(6);
-        
-        // Adicionar animação de clique
-        botao.setOnClickListener(v -> {
-            v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100)
-              .withEndAction(() -> {
-                  v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100);
-              });
-        });
+        botao.setElevation(dpUi(2));
         
         return botao;
     }
 
     private int dpUi(int d) {
         return Math.round(d * getResources().getDisplayMetrics().density);
+    }
+
+    private int corFundoTopo() {
+        return temaEscuro ? DARK_BG_TOP : LIGHT_BG_TOP;
+    }
+
+    private int corFundoBase() {
+        return temaEscuro ? DARK_BG_BOTTOM : LIGHT_BG_BOTTOM;
+    }
+
+    private int corSuperficie() {
+        return temaEscuro ? DARK_SURFACE : LIGHT_SURFACE;
+    }
+
+    private int corSuperficieElevada() {
+        return temaEscuro ? DARK_SURFACE_RAISED : LIGHT_SURFACE_RAISED;
+    }
+
+    private int corTextoPrincipal() {
+        return temaEscuro ? DARK_TEXT : LIGHT_TEXT;
+    }
+
+    private int corTextoSecundario() {
+        return temaEscuro ? DARK_TEXT_MUTED : LIGHT_TEXT_MUTED;
+    }
+
+    private int corBorda() {
+        return temaEscuro ? DARK_BORDER : LIGHT_BORDER;
+    }
+
+    private int withAlpha(int color, int alpha) {
+        return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color));
+    }
+
+    private GradientDrawable fundoArredondado(int cor, int raioDp, int larguraBordaDp, int corBorda) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(cor);
+        bg.setCornerRadius(dpUi(raioDp));
+        if (larguraBordaDp > 0) {
+            bg.setStroke(dpUi(larguraBordaDp), corBorda);
+        }
+        return bg;
+    }
+
+    private void atualizarCoresSistema() {
+        getWindow().setStatusBarColor(corFundoTopo());
+        getWindow().setNavigationBarColor(corFundoBase());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            int flags = temaEscuro ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
+    }
+
+    private void estilizarBotaoSecundario(Button btn) {
+        btn.setAllCaps(false);
+        btn.setTextColor(corTextoPrincipal());
+        btn.setTextSize(15);
+        btn.setMinHeight(dpUi(48));
+        btn.setPadding(dpUi(16), dpUi(10), dpUi(16), dpUi(10));
+        btn.setBackground(fundoArredondado(corSuperficieElevada(), 8, 1, corBorda()));
+        btn.setElevation(dpUi(1));
+    }
+
+    private LinearLayout.LayoutParams layoutCardMenuParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, dpUi(5), 0, dpUi(5));
+        return params;
+    }
+
+    private boolean telaConteudoVisivel() {
+        return contentScrollView != null
+            ? contentScrollView.getVisibility() == View.VISIBLE
+            : contentContainer != null && contentContainer.getVisibility() == View.VISIBLE;
+    }
+
+    private void mostrarTelaConteudo() {
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.VISIBLE);
+        }
+        if (contentScrollView != null) {
+            contentScrollView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void ocultarTelaConteudo() {
+        if (contentContainer != null) {
+            contentContainer.setVisibility(View.GONE);
+        }
+        if (contentScrollView != null) {
+            contentScrollView.setVisibility(View.GONE);
+        }
+    }
+
+    private void rolarConteudoParaInicio() {
+        if (contentScrollView != null) {
+            contentScrollView.post(() -> contentScrollView.fullScroll(ScrollView.FOCUS_UP));
+        }
+    }
+
+    private void rolarConteudoParaView(View alvo) {
+        if (contentScrollView == null || alvo == null) {
+            return;
+        }
+        contentScrollView.post(() -> {
+            int y = alvo.getTop();
+            android.view.ViewParent parent = alvo.getParent();
+            while (parent instanceof View && parent != contentScrollView) {
+                View parentView = (View) parent;
+                y += parentView.getTop();
+                parent = parentView.getParent();
+            }
+            contentScrollView.smoothScrollTo(0, Math.max(0, y - dpUi(12)));
+        });
     }
 
     /**
@@ -238,7 +368,7 @@ public class MainActivity extends AppCompatActivity {
         scrollView.addView(resultadoView);
         scrollView.setLayoutParams(new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT
+            LinearLayout.LayoutParams.WRAP_CONTENT
         ));
     }
 
@@ -248,31 +378,42 @@ public class MainActivity extends AppCompatActivity {
         tv.setText(texto);
         tv.setTextSize(14);
         tv.setTypeface(null, Typeface.BOLD);
-        tv.setTextColor(temaEscuro ? Color.parseColor("#ECEFF4") : Color.parseColor("#37474F"));
-        tv.setPadding(dpUi(4), dpUi(12), dpUi(4), dpUi(4));
+        tv.setTextColor(corTextoPrincipal());
+        tv.setPadding(dpUi(2), dpUi(12), dpUi(2), dpUi(5));
         contentContainer.addView(tv);
     }
 
     /** Preenchimento dos campos de texto: cinza para não confundir com área branca do app. */
     private void aplicarEstiloCampoEntradaTematizado(EditText et) {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(temaEscuro ? Color.parseColor("#2C313A") : Color.parseColor("#D8DCE6"));
-        bg.setStroke(dpUi(1), temaEscuro ? Color.parseColor("#5E81AC") : Color.parseColor("#1565C0"));
-        bg.setCornerRadius(dpUi(8));
-        et.setBackground(bg);
-        et.setPadding(dpUi(12), dpUi(14), dpUi(12), dpUi(14));
-        et.setTextColor(temaEscuro ? Color.parseColor("#ECEFF4") : Color.parseColor("#1A1A1A"));
-        et.setHintTextColor(temaEscuro ? Color.parseColor("#8B95A8") : Color.parseColor("#607D8B"));
+        et.setBackground(fundoArredondado(corSuperficieElevada(), 8, 1, corBorda()));
+        et.setMinHeight(dpUi(52));
+        et.setPadding(dpUi(14), dpUi(12), dpUi(14), dpUi(12));
+        et.setTextSize(15);
+        et.setTextColor(corTextoPrincipal());
+        et.setHintTextColor(corTextoSecundario());
     }
 
     /** Caixa de entrada visível (borda, cantos, margem). */
     private void estilizarCampoEntrada(EditText et) {
         aplicarEstiloCampoEntradaTematizado(et);
+        configurarRolagemCampoEntrada(et);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(dpUi(4), dpUi(2), dpUi(4), dpUi(10));
+        lp.setMargins(0, dpUi(2), 0, dpUi(10));
         et.setLayoutParams(lp);
+    }
+
+    private void configurarRolagemCampoEntrada(EditText et) {
+        et.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) {
+                view.postDelayed(() -> rolarConteudoParaView(view), 250);
+                view.postDelayed(() -> rolarConteudoParaView(view), 500);
+            }
+        });
+        et.setOnClickListener(view -> {
+            view.postDelayed(() -> rolarConteudoParaView(view), 250);
+        });
     }
 
     /** Fundo principal com gradiente suave (base para efeito “vidro”). */
@@ -282,9 +423,7 @@ public class MainActivity extends AppCompatActivity {
         }
         GradientDrawable gd = new GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
-            temaEscuro
-                ? new int[]{Color.parseColor("#0B0F14"), Color.parseColor("#151C28")}
-                : new int[]{Color.parseColor("#D4DDE8"), Color.parseColor("#E8EEF5")}
+            new int[]{corFundoTopo(), corFundoBase()}
         );
         rootMainLayout.setBackground(gd);
     }
@@ -295,16 +434,16 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dpUi(12));
-        if (temaEscuro) {
-            bg.setColor(Color.argb(235, 28, 34, 44));
-            bg.setStroke(dpUi(1), Color.argb(140, 120, 160, 200));
-        } else {
-            bg.setColor(Color.argb(252, 255, 255, 255));
-            bg.setStroke(dpUi(1), Color.argb(160, 255, 255, 255));
-        }
+        bg.setCornerRadius(dpUi(8));
+        bg.setColor(corSuperficie());
+        bg.setStroke(dpUi(1), corBorda());
         resultadoView.setBackground(bg);
-        resultadoView.setElevation(dpUi(3));
+        resultadoView.setTextColor(corTextoPrincipal());
+        resultadoView.setTextSize(14);
+        resultadoView.setLineSpacing(dpUi(2), 1.0f);
+        resultadoView.setMinHeight(dpUi(168));
+        resultadoView.setPadding(dpUi(14), dpUi(14), dpUi(14), dpUi(14));
+        resultadoView.setElevation(dpUi(2));
     }
 
     /**
@@ -441,25 +580,10 @@ public class MainActivity extends AppCompatActivity {
      * Aplica o tema atual (claro ou escuro)
      */
     private void aplicarTema() {
-        int corFundo, corTexto, corCard;
-        
-        if (temaEscuro) {
-            corFundo = Color.parseColor("#121212");
-            corTexto = Color.parseColor("#FFFFFF");
-            corCard = Color.parseColor("#1E1E1E");
-        } else {
-            corFundo = Color.parseColor("#F5F5F5");
-            corTexto = Color.parseColor("#333333");
-            corCard = Color.WHITE;
-        }
-        
-        // Aplicar cores ao layout principal
-        if (getCurrentFocus() != null) {
-            View rootView = getCurrentFocus().getRootView();
-            if (rootView instanceof LinearLayout) {
-                rootView.setBackgroundColor(corFundo);
-            }
-        }
+        aplicarFundoGradientePrincipal();
+        aplicarEstiloAreaResultado();
+        atualizarCoresSistema();
+        atualizarBotaoTema();
     }
 
     /**
@@ -484,15 +608,20 @@ public class MainActivity extends AppCompatActivity {
      * Aplica o tema inicial quando a atividade é criada
      */
     private void aplicarTemaInicial() {
-        if (temaEscuro) {
-            aplicarTemaAosContainers();
-        }
+        aplicarTema();
+        aplicarTemaAosContainers();
     }
 
     /**
      * Atualiza o botão de tema sem recriar a interface
      */
     private void atualizarBotaoTema() {
+        if (btnTema != null) {
+            btnTema.setText(temaEscuro ? "\u2600" : "\u263E");
+            btnTema.setContentDescription(temaEscuro ? "Ativar tema claro" : "Ativar tema escuro");
+            btnTema.setBackground(fundoArredondado(withAlpha(Color.WHITE, temaEscuro ? 24 : 46), 8, 1, withAlpha(Color.WHITE, 80)));
+            return;
+        }
         // Encontrar o botão de tema no header
         if (menuContainer != null && menuContainer.getParent() != null) {
             ViewGroup parent = (ViewGroup) menuContainer.getParent();
@@ -522,17 +651,8 @@ public class MainActivity extends AppCompatActivity {
      * Aplica o tema aos containers existentes
      */
     private void aplicarTemaAosContainers() {
-        int corFundo, corTexto, corCard;
-        
-        if (temaEscuro) {
-            corFundo = Color.parseColor("#121212");
-            corTexto = Color.parseColor("#FFFFFF");
-            corCard = Color.parseColor("#1E1E1E");
-        } else {
-            corFundo = Color.parseColor("#F5F5F5");
-            corTexto = Color.parseColor("#333333");
-            corCard = Color.WHITE;
-        }
+        int corTexto = corTextoPrincipal();
+        int corCard = corSuperficie();
         
         // Aplicar tema ao menu container
         if (menuContainer != null) {
@@ -547,6 +667,8 @@ public class MainActivity extends AppCompatActivity {
         }
         aplicarFundoGradientePrincipal();
         aplicarEstiloAreaResultado();
+        atualizarCoresSistema();
+        atualizarBotaoTema();
     }
 
     /**
@@ -556,12 +678,24 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < parent.getChildCount(); i++) {
             View child = parent.getChildAt(i);
             
-            if (child instanceof TextView) {
+            if (child instanceof Button) {
+                Button btn = (Button) child;
+                Object tag = btn.getTag();
+                if ("ppf_action".equals(tag) || "ppf_theme".equals(tag) || "ppf_info".equals(tag)) {
+                    btn.setTextColor(Color.WHITE);
+                } else {
+                    estilizarBotaoSecundario(btn);
+                }
+            } else if (child instanceof EditText) {
+                EditText editText = (EditText) child;
+                aplicarEstiloCampoEntradaTematizado(editText);
+            } else if (child instanceof TextView) {
                 TextView textView = (TextView) child;
                 String texto = textView.getText().toString();
+                Object tag = textView.getTag();
                 
                 // Manter cores especiais dos textos
-                if (texto.contains("💡 Tutorial") || texto.contains("WhatsApp")) {
+                if ("ppf_tutorial".equals(tag) || texto.contains("WhatsApp")) {
                     // Manter cores originais dos textos especiais
                     if (texto.contains("WhatsApp")) {
                         textView.setTextColor(Color.parseColor("#25D366"));
@@ -569,25 +703,6 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     textView.setTextColor(corTexto);
                 }
-            } else if (child instanceof Button) {
-                Button btn = (Button) child;
-                String texto = btn.getText().toString();
-                
-                // Manter cores especiais dos botões com gradientes
-                if (texto.contains("☀️") || texto.contains("🌙") || 
-                    texto.contains("← Voltar") || texto.contains("Voltar ao Menu") ||
-                    texto.contains("🔍") || texto.contains("📊") || texto.contains("🚀") ||
-                    texto.contains("✨") || texto.contains("🔄") || texto.contains("💾")) {
-                    // Manter cores originais dos botões especiais
-                    btn.setTextColor(Color.WHITE);
-                } else {
-                    // Aplicar tema padrão para botões normais
-                    btn.setTextColor(corTexto);
-                    btn.setBackgroundColor(corCard);
-                }
-            } else if (child instanceof EditText) {
-                EditText editText = (EditText) child;
-                aplicarEstiloCampoEntradaTematizado(editText);
             } else if (child instanceof ScrollView) {
                 ScrollView scrollView = (ScrollView) child;
                 if (temaEscuro) {
@@ -680,12 +795,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         // Se estiver em uma tela de funcionalidade, voltar ao menu
-        if (contentContainer.getVisibility() == View.VISIBLE) {
+        if (telaConteudoVisivel()) {
             // Limpar o container de conteúdo
             contentContainer.removeAllViews();
             
             // Voltar ao menu com animação
-            contentContainer.setVisibility(View.GONE);
+            ocultarTelaConteudo();
             if (menuScrollView != null) {
                 menuScrollView.setVisibility(View.VISIBLE);
                 menuScrollView.setAlpha(0.0f);
@@ -696,7 +811,11 @@ public class MainActivity extends AppCompatActivity {
             criarMenu();
             
             // Adicionar animação suave
-            contentContainer.animate().alpha(0.0f).setDuration(300);
+            if (contentScrollView != null) {
+                contentScrollView.animate().alpha(0.0f).setDuration(300);
+            } else {
+                contentContainer.animate().alpha(0.0f).setDuration(300);
+            }
             if (menuScrollView != null) {
                 menuScrollView.animate().alpha(1.0f).setDuration(300);
             }
@@ -709,6 +828,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         // Verificações de segurança
         if (!verificarSeguranca()) {
@@ -760,44 +880,71 @@ public class MainActivity extends AppCompatActivity {
         // Layout principal
         rootMainLayout = new LinearLayout(this);
         rootMainLayout.setOrientation(LinearLayout.VERTICAL);
-        rootMainLayout.setPadding(dpUi(12), dpUi(12), dpUi(12), dpUi(12));
+        rootMainLayout.setPadding(dpUi(10), dpUi(10), dpUi(10), dpUi(10));
 
         // Cabeçalho com título (barra “vidro” / gradiente)
         LinearLayout headerLayout = new LinearLayout(this);
-        headerLayout.setOrientation(LinearLayout.VERTICAL);
-        headerLayout.setGravity(android.view.Gravity.CENTER);
+        headerLayout.setOrientation(LinearLayout.HORIZONTAL);
+        headerLayout.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable headerBg = new GradientDrawable(
             GradientDrawable.Orientation.LEFT_RIGHT,
-            new int[]{Color.parseColor("#1565C0"), Color.parseColor("#5C6BC0"), Color.parseColor("#7E57C2")}
+            new int[]{BRAND_PRIMARY, Color.rgb(38, 98, 118), BRAND_SECONDARY}
         );
-        headerBg.setCornerRadius(dpUi(14));
+        headerBg.setCornerRadius(dpUi(8));
         headerLayout.setBackground(headerBg);
-        headerLayout.setPadding(dpUi(16), dpUi(14), dpUi(16), dpUi(14));
+        headerLayout.setPadding(dpUi(14), dpUi(12), dpUi(10), dpUi(12));
         LinearLayout.LayoutParams headerLp = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        headerLp.setMargins(0, 0, 0, dpUi(8));
+        headerLp.setMargins(0, 0, 0, dpUi(10));
         headerLayout.setLayoutParams(headerLp);
-        headerLayout.setElevation(dpUi(4));
+        headerLayout.setElevation(dpUi(3));
+
+        LinearLayout titleStack = new LinearLayout(this);
+        titleStack.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams titleStackLp = new LinearLayout.LayoutParams(
+            0,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            1f
+        );
+        titleStack.setLayoutParams(titleStackLp);
 
         TextView titulo = new TextView(this);
         titulo.setText("PrimeProFast");
-        titulo.setTextSize(22);
+        titulo.setTextSize(21);
         titulo.setTypeface(null, Typeface.BOLD);
         titulo.setTextColor(Color.WHITE);
-        titulo.setShadowLayer(4f, 0f, 1f, Color.argb(120, 0, 0, 0));
-        titulo.setPadding(0, 0, 0, 0);
-        titulo.setGravity(android.view.Gravity.CENTER);
-        titulo.setLetterSpacing(0.02f);
+        titulo.setGravity(Gravity.START);
+        titulo.setLetterSpacing(0.01f);
 
-        LinearLayout.LayoutParams tituloParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        titulo.setLayoutParams(tituloParams);
+        TextView subtitulo = new TextView(this);
+        subtitulo.setText("Primos, RSA e análise matemática");
+        subtitulo.setTextSize(12);
+        subtitulo.setTextColor(withAlpha(Color.WHITE, 215));
+        subtitulo.setPadding(0, dpUi(2), 0, 0);
 
-        headerLayout.addView(titulo);
+        titleStack.addView(titulo);
+        titleStack.addView(subtitulo);
+
+        btnTema = new Button(this);
+        btnTema.setTag("ppf_theme");
+        btnTema.setAllCaps(false);
+        btnTema.setTextColor(Color.WHITE);
+        btnTema.setTextSize(19);
+        btnTema.setMinWidth(dpUi(44));
+        btnTema.setMinHeight(dpUi(44));
+        btnTema.setPadding(0, 0, 0, 0);
+        btnTema.setOnClickListener(v -> alternarTema());
+        LinearLayout.LayoutParams temaLp = new LinearLayout.LayoutParams(dpUi(44), dpUi(44));
+        temaLp.setMargins(dpUi(12), 0, 0, 0);
+        btnTema.setLayoutParams(temaLp);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            btnTema.setTooltipText("Alternar tema");
+        }
+
+        headerLayout.addView(titleStack);
+        headerLayout.addView(btnTema);
 
         rootMainLayout.addView(headerLayout);
 
@@ -805,12 +952,14 @@ public class MainActivity extends AppCompatActivity {
         menuScrollView = new ScrollView(this);
         menuScrollView.setLayoutParams(new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT
+            0,
+            1f
         ));
         menuScrollView.setFillViewport(true);
 
         menuContainer = new LinearLayout(this);
         menuContainer.setOrientation(LinearLayout.VERTICAL);
+        menuContainer.setPadding(0, dpUi(2), 0, dpUi(10));
         menuContainer.setLayoutParams(new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -818,17 +967,32 @@ public class MainActivity extends AppCompatActivity {
         menuScrollView.addView(menuContainer);
         rootMainLayout.addView(menuScrollView);
 
-        // Container do conteúdo (inicialmente oculto)
+        // Container rolável do conteúdo (inicialmente oculto)
+        contentScrollView = new ScrollView(this);
+        contentScrollView.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        ));
+        contentScrollView.setFillViewport(false);
+        contentScrollView.setVisibility(View.GONE);
+
         contentContainer = new LinearLayout(this);
         contentContainer.setOrientation(LinearLayout.VERTICAL);
         contentContainer.setVisibility(View.GONE);
-        rootMainLayout.addView(contentContainer);
+        contentContainer.setPadding(0, dpUi(2), 0, 0);
+        contentContainer.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+        contentScrollView.addView(contentContainer);
+        rootMainLayout.addView(contentScrollView);
 
         // Área de resultado
         scrollView = new ScrollView(this);
         scrollView.setLayoutParams(new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.MATCH_PARENT
+            LinearLayout.LayoutParams.WRAP_CONTENT
         ));
 
         resultadoView = new TextView(this);
@@ -855,36 +1019,29 @@ public class MainActivity extends AppCompatActivity {
         // Garantir orientação vertical para empilhar os cards como na apresentação desejada
         menuContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // Layout params para cards em coluna única, ocupando toda a largura
-        LinearLayout.LayoutParams fullWidthCardParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        fullWidthCardParams.setMargins(0, dpUi(6), 0, dpUi(6));
-
         // Ordem e descrições conforme apresentação vertical
         View card1 = criarCard("Primos por Intervalo", "Encontre primos em um intervalo específico.", false);
-        card1.setLayoutParams(fullWidthCardParams);
+        card1.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card1);
 
         View card2 = criarCard("Primos Especiais", "Explore classes específicas de primos famosos.", false);
-        card2.setLayoutParams(fullWidthCardParams);
+        card2.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card2);
 
         View card3 = criarCard("Primos Aleatórios", "Gere primos aleatórios de vários tamanhos.", false);
-        card3.setLayoutParams(fullWidthCardParams);
+        card3.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card3);
 
         View card4 = criarCard("Conjectura de Legendre", "Teste a conjectura de Legendre com diferentes intervalos.", false);
-        card4.setLayoutParams(fullWidthCardParams);
+        card4.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card4);
 
         View card5 = criarCard("Números de Mersenne", "Encontre e analise números de Mersenne.", false);
-        card5.setLayoutParams(fullWidthCardParams);
+        card5.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card5);
 
         View card6 = criarCard("Números Perfeitos", "Calcule e explore números perfeitos.", false);
-        card6.setLayoutParams(fullWidthCardParams);
+        card6.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card6);
 
         View card7 = criarCard(
@@ -892,15 +1049,15 @@ public class MainActivity extends AppCompatActivity {
             "Gerar chaves RSA\nGerar criptografia e descriptografia\nGerar hash criptográfico\nAssinatura digital",
             false
         );
-        card7.setLayoutParams(fullWidthCardParams);
+        card7.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card7);
 
         View card8 = criarCard("Teste de Primalidade", "Análise completa de primalidade e fatoração.", false);
-        card8.setLayoutParams(fullWidthCardParams);
+        card8.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card8);
 
         View card9 = criarCard("Estatísticas", "Análise estatística completa de números primos.", false);
-        card9.setLayoutParams(fullWidthCardParams);
+        card9.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card9);
         
         // Espaçador que empurra o rodapé para o fim
@@ -917,16 +1074,17 @@ public class MainActivity extends AppCompatActivity {
         rodapeContainer.setGravity(android.view.Gravity.CENTER);
         rodapeContainer.setPadding(16, 20, 16, 16);
         
-        // Botão de informações (barra inferior azul, estilo mockup)
+        // Botão de informações no rodapé.
         Button btnInfo = new Button(this);
-        btnInfo.setText("ℹ️  INFO");
+        btnInfo.setText("Informações");
+        btnInfo.setTag("ppf_info");
         btnInfo.setTextSize(15);
         btnInfo.setTypeface(null, Typeface.BOLD);
         btnInfo.setTextColor(Color.WHITE);
         btnInfo.setAllCaps(false);
         GradientDrawable infoBg = new GradientDrawable();
-        infoBg.setCornerRadius(dpUi(12));
-        infoBg.setColor(Color.parseColor("#2196F3"));
+        infoBg.setCornerRadius(dpUi(8));
+        infoBg.setColor(BRAND_PRIMARY);
         btnInfo.setBackground(infoBg);
         btnInfo.setPadding(dpUi(20), dpUi(14), dpUi(20), dpUi(14));
         btnInfo.setElevation(dpUi(2));
@@ -943,7 +1101,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Card do menu: faixa colorida à esquerda (ícone grande), texto ao centro, Tutorial à direita, borda na cor do tema do card.
+     * Card do menu: acento visual discreto, texto principal e atalho de tutorial.
      */
     private View criarCard(String titulo, String descricao, boolean ativo) {
         int[] design = obterDesignUnico(titulo);
@@ -958,41 +1116,42 @@ public class MainActivity extends AppCompatActivity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ));
-        row.setMinimumHeight(dpUi(92));
+        row.setMinimumHeight(dpUi(82));
+        row.setPadding(dpUi(10), dpUi(8), dpUi(8), dpUi(8));
 
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setCornerRadius(dpUi(12));
+        cardBg.setCornerRadius(dpUi(8));
         if (ativo) {
             cardBg.setColor(corPrimaria);
-            cardBg.setStroke(dpUi(2), corSecundaria);
+            cardBg.setStroke(dpUi(1), corSecundaria);
         } else if (temaEscuro) {
-            cardBg.setColor(Color.parseColor("#2C313C"));
-            cardBg.setStroke(dpUi(2), corPrimaria);
+            cardBg.setColor(corSuperficie());
+            cardBg.setStroke(dpUi(1), withAlpha(corPrimaria, 150));
         } else {
-            cardBg.setColor(Color.WHITE);
-            cardBg.setStroke(dpUi(2), corPrimaria);
+            cardBg.setColor(corSuperficie());
+            cardBg.setStroke(dpUi(1), corBorda());
         }
         row.setBackground(cardBg);
-        row.setElevation(dpUi(3));
+        row.setElevation(dpUi(2));
 
-        // Painel esquerdo: cor sólida + emoji grande
+        // Chip esquerdo: cor de acento + ícone.
         LinearLayout leftPanel = new LinearLayout(this);
         leftPanel.setOrientation(LinearLayout.VERTICAL);
-        leftPanel.setGravity(android.view.Gravity.CENTER);
-        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(dpUi(84), LinearLayout.LayoutParams.MATCH_PARENT);
+        leftPanel.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(dpUi(54), dpUi(54));
+        leftLp.setMargins(0, 0, dpUi(10), 0);
         leftPanel.setLayoutParams(leftLp);
-        leftPanel.setMinimumHeight(dpUi(96));
 
         GradientDrawable leftBg = new GradientDrawable();
-        float r = dpUi(12);
-        leftBg.setCornerRadii(new float[]{r, r, 0, 0, 0, 0, r, r});
-        leftBg.setColor(corPrimaria);
+        leftBg.setCornerRadius(dpUi(8));
+        leftBg.setColor(withAlpha(corPrimaria, temaEscuro ? 72 : 28));
+        leftBg.setStroke(dpUi(1), withAlpha(corPrimaria, temaEscuro ? 130 : 86));
         leftPanel.setBackground(leftBg);
 
         TextView icon = new TextView(this);
         icon.setText(emoji);
-        icon.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 38);
-        icon.setGravity(android.view.Gravity.CENTER);
+        icon.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 27);
+        icon.setGravity(Gravity.CENTER);
         icon.setIncludeFontPadding(false);
         leftPanel.addView(icon, new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1003,7 +1162,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout center = new LinearLayout(this);
         center.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams centerLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        centerLp.setMargins(dpUi(10), dpUi(12), dpUi(6), dpUi(12));
+        centerLp.setMargins(0, 0, dpUi(8), 0);
         center.setLayoutParams(centerLp);
 
         TextView tituloView = new TextView(this);
@@ -1014,44 +1173,47 @@ public class MainActivity extends AppCompatActivity {
         if (ativo) {
             tituloView.setTextColor(Color.WHITE);
         } else {
-            tituloView.setTextColor(temaEscuro ? Color.parseColor("#ECEFF4") : Color.parseColor("#212121"));
+            tituloView.setTextColor(corTextoPrincipal());
         }
 
         TextView descView = new TextView(this);
         descView.setText(descricao);
         descView.setTextSize(12);
         descView.setLineSpacing(dpUi(2), 1f);
-        descView.setMaxLines(8);
+        descView.setMaxLines(4);
         if (ativo) {
             descView.setTextColor(Color.argb(230, 255, 255, 255));
         } else {
-            descView.setTextColor(temaEscuro ? Color.parseColor("#B0B8C4") : Color.parseColor("#616161"));
+            descView.setTextColor(corTextoSecundario());
         }
 
         center.addView(tituloView);
         center.addView(descView);
 
-        // Tutorial à direita (laranja, como no mockup)
+        // Tutorial à direita.
         TextView btnTutorial = new TextView(this);
-        btnTutorial.setText("💡 Tutorial");
-        btnTutorial.setTextSize(12);
+        btnTutorial.setText("?");
+        btnTutorial.setTag("ppf_tutorial");
+        btnTutorial.setTextSize(16);
         btnTutorial.setTypeface(null, Typeface.BOLD);
-        btnTutorial.setTextColor(Color.WHITE);
-        btnTutorial.setGravity(android.view.Gravity.CENTER);
-        int tPad = dpUi(10);
-        btnTutorial.setPadding(tPad, dpUi(14), tPad, dpUi(14));
+        btnTutorial.setTextColor(temaEscuro ? Color.WHITE : corPrimaria);
+        btnTutorial.setGravity(Gravity.CENTER);
+        btnTutorial.setContentDescription("Abrir tutorial de " + titulo);
         GradientDrawable tutBg = new GradientDrawable();
-        tutBg.setCornerRadius(dpUi(10));
-        tutBg.setColor(Color.parseColor("#FF9800"));
-        tutBg.setStroke(dpUi(1), Color.parseColor("#FFE082"));
+        tutBg.setCornerRadius(dpUi(8));
+        tutBg.setColor(withAlpha(corPrimaria, temaEscuro ? 68 : 18));
+        tutBg.setStroke(dpUi(1), withAlpha(corPrimaria, temaEscuro ? 150 : 110));
         btnTutorial.setBackground(tutBg);
         btnTutorial.setClickable(true);
         btnTutorial.setFocusable(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            btnTutorial.setTooltipText("Abrir tutorial");
+        }
         LinearLayout.LayoutParams tutLp = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            dpUi(40),
+            dpUi(40)
         );
-        tutLp.setMargins(0, 0, dpUi(10), 0);
+        tutLp.setMargins(0, 0, 0, 0);
         btnTutorial.setLayoutParams(tutLp);
         btnTutorial.setOnClickListener(v -> abrirTutorial(titulo));
 
@@ -1196,25 +1358,25 @@ public class MainActivity extends AppCompatActivity {
     private int[] obterDesignUnico(String titulo) {
         switch (titulo) {
             case "Primos por Intervalo":
-                return new int[]{0xFF3F51B5, 0xFF5C6BC0}; // Índigo
+                return new int[]{0xFF1D4E89, 0xFF2F6FA3};
             case "Números de Mersenne":
-                return new int[]{0xFF5E35B1, 0xFF9575CD}; // Roxo escuro (ícone raio)
+                return new int[]{0xFF6A5A8C, 0xFF8B78AC};
             case "Números Perfeitos":
-                return new int[]{0xFF4CAF50, 0xFF81C784}; // Verde
+                return new int[]{0xFF2E7D6F, 0xFF4F9C8E};
             case "Segurança Digital":
-                return new int[]{0xFFFF5722, 0xFFFF8A65}; // Laranja
+                return new int[]{0xFFC45A3B, 0xFFD98262};
             case "Teste de Primalidade":
-                return new int[]{0xFF2196F3, 0xFF64B5F6}; // Azul
+                return new int[]{0xFF2F6F9F, 0xFF5F94BD};
             case "Primos Especiais":
-                return new int[]{0xFF9C27B0, 0xFFBA68C8}; // Roxo
+                return new int[]{0xFF8A5A83, 0xFFA979A1};
             case "Primos Aleatórios":
-                return new int[]{0xFF607D8B, 0xFF90A4AE}; // Azul acinzentado
+                return new int[]{0xFF5C677D, 0xFF7F8AA0};
             case "Conjectura de Legendre":
-                return new int[]{0xFFE91E63, 0xFFF06292}; // Rosa
+                return new int[]{0xFFB66B45, 0xFFD0996D};
             case "Estatísticas":
-                return new int[]{0xFF009688, 0xFF4DB6AC}; // Teal
+                return new int[]{0xFF357C73, 0xFF5AA69A};
             default:
-                return new int[]{0xFF757575, 0xFFBDBDBD}; // Cinza padrão
+                return new int[]{0xFF6B7280, 0xFF9CA3AF};
         }
     }
 
@@ -1615,68 +1777,110 @@ public class MainActivity extends AppCompatActivity {
      */
     private String gerarHTMLResultado(String titulo, String resultado, String tipo) {
         StringBuilder html = new StringBuilder();
+        String tituloSeguro = escaparHtml(titulo);
+        String tipoSeguro = escaparHtml(tipo);
+        String resultadoSeguro = escaparHtml(resultado);
+        String geradoEm = new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date());
+        String tamanhoRelatorio = String.format(Locale.getDefault(), "%,d", resultado != null ? resultado.length() : 0);
         
         html.append("<!DOCTYPE html>\n");
         html.append("<html lang='pt-BR'>\n");
         html.append("<head>\n");
         html.append("    <meta charset='UTF-8'>\n");
         html.append("    <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n");
-        html.append("    <title>").append(titulo).append(" - PrimeProFast</title>\n");
+        html.append("    <title>").append(tituloSeguro).append(" - PrimeProFast</title>\n");
         html.append("    <style>\n");
-        html.append("        * { margin: 0; padding: 0; box-sizing: border-box; }\n");
-        html.append("        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }\n");
-        html.append("        .container { width: 100%; margin: 0; padding: 0; }\n");
-        html.append("        .header { text-align: center; margin-bottom: 40px; color: white; }\n");
-        html.append("        .header h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }\n");
-        html.append("        .header p { font-size: 1.2em; opacity: 0.9; }\n");
-        html.append("        .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; margin: 20px 0; overflow: hidden; }\n");
-        html.append("        .progress-fill { height: 100%; background: linear-gradient(90deg, #4CAF50, #45a049); width: 0%; transition: width 0.3s ease; width: 0%; }\n");
-        html.append("        .content { background: white; border-radius: 20px; padding: 40px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }\n");
-        html.append("        .resultado { margin-bottom: 30px; padding: 25px; border-left: 5px solid #667eea; background: #f8f9fa; border-radius: 0 15px 15px 0; }\n");
-        html.append("        .resultado h3 { color: #667eea; font-size: 1.4em; margin-bottom: 15px; }\n");
-        html.append("        .resultado pre { background: #2d3748; color: #e2e8f0; padding: 20px; border-radius: 10px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 0.9em; line-height: 1.4; }\n");
-        html.append("        .footer { text-align: center; margin-top: 40px; padding: 20px; color: white; font-size: 0.9em; }\n");
-        html.append("        .tipo-badge { display: inline-block; padding: 8px 16px; background: #667eea; color: white; border-radius: 20px; font-size: 0.9em; margin-bottom: 20px; }\n");
-        html.append("        @media (max-width: 768px) { .container { padding: 10px; } .content { padding: 20px; } }\n");
+        html.append("        :root { color-scheme: light dark; --bg:#f6f8fb; --bg2:#e8eff7; --surface:#ffffff; --surface-2:#f7fafc; --text:#142033; --muted:#5c697a; --border:#d6e1ec; --brand:#1d4e89; --accent:#2e7d6f; --code:#0f1720; --code-text:#e8edf3; }\n");
+        html.append("        @media (prefers-color-scheme: dark) { :root { --bg:#0e131a; --bg2:#161e29; --surface:#1a222e; --surface-2:#202a39; --text:#eef3f8; --muted:#aab6c5; --border:#364458; --code:#0b1118; --code-text:#edf4fb; } }\n");
+        html.append("        * { box-sizing: border-box; }\n");
+        html.append("        body { margin:0; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; color:var(--text); background:linear-gradient(180deg,var(--bg),var(--bg2)); }\n");
+        html.append("        .progress { position:fixed; top:0; left:0; right:0; height:4px; background:transparent; z-index:10; }\n");
+        html.append("        .progress span { display:block; width:0%; height:100%; background:linear-gradient(90deg,var(--brand),var(--accent)); }\n");
+        html.append("        .shell { width:min(1100px,100%); margin:0 auto; padding:18px; }\n");
+        html.append("        .hero { background:linear-gradient(135deg,var(--brand),#266276,var(--accent)); color:white; border-radius:8px; padding:22px; box-shadow:0 12px 28px rgba(15,23,42,.18); }\n");
+        html.append("        .brand { font-size:.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; opacity:.82; }\n");
+        html.append("        h1 { margin:.35rem 0 .25rem; font-size:clamp(1.45rem,4vw,2.4rem); line-height:1.08; }\n");
+        html.append("        .subtitle { margin:0; color:rgba(255,255,255,.86); }\n");
+        html.append("        .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }\n");
+        html.append("        .chip { border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.12); color:white; border-radius:999px; padding:7px 10px; font-size:.86rem; }\n");
+        html.append("        .panel { margin-top:14px; border:1px solid var(--border); background:var(--surface); border-radius:8px; overflow:hidden; box-shadow:0 8px 20px rgba(15,23,42,.08); }\n");
+        html.append("        .panel-head { display:flex; gap:12px; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border); background:var(--surface-2); }\n");
+        html.append("        .panel-title { font-weight:700; }\n");
+        html.append("        button { border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:8px; padding:9px 12px; font-weight:700; }\n");
+        html.append("        pre { margin:0; padding:16px; background:var(--code); color:var(--code-text); overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; font:13px/1.55 'SFMono-Regular',Consolas,'Liberation Mono',monospace; }\n");
+        html.append("        .footer { color:var(--muted); text-align:center; padding:16px 8px 4px; font-size:.86rem; }\n");
+        html.append("        @media (max-width:600px) { .shell { padding:10px; } .hero { padding:18px; } .panel-head { align-items:flex-start; flex-direction:column; } button { width:100%; } pre { font-size:12px; padding:13px; } }\n");
         html.append("    </style>\n");
         html.append("</head>\n");
         html.append("<body>\n");
-        html.append("    <div class='container'>\n");
-        html.append("        <div class='header'>\n");
-        html.append("            <h1>🚀 ").append(titulo).append("</h1>\n");
-        html.append("            <p>Resultado do PrimeProFast - ").append(tipo).append("</p>\n");
-        html.append("            <div class='progress-bar'>\n");
-        html.append("                <div class='progress-fill' id='progress'></div>\n");
+        html.append("    <div class='progress'><span id='progress'></span></div>\n");
+        html.append("    <main class='shell'>\n");
+        html.append("        <header class='hero'>\n");
+        html.append("            <div class='brand'>PrimeProFast</div>\n");
+        html.append("            <h1>").append(tituloSeguro).append("</h1>\n");
+        html.append("            <p class='subtitle'>").append(tipoSeguro).append("</p>\n");
+        html.append("            <div class='meta'>\n");
+        html.append("                <span class='chip'>Gerado em ").append(escaparHtml(geradoEm)).append("</span>\n");
+        html.append("                <span class='chip'>").append(escaparHtml(tamanhoRelatorio)).append(" caracteres</span>\n");
         html.append("            </div>\n");
-        html.append("        </div>\n");
-        html.append("        \n");
-        html.append("        <div class='content'>\n");
-        html.append("            <div class='tipo-badge'>📊 ").append(tipo).append("</div>\n");
-        html.append("            <div class='resultado'>\n");
-        html.append("                <h3>📋 Resultado Completo</h3>\n");
-        html.append("                <pre>").append(resultado).append("</pre>\n");
+        html.append("        </header>\n");
+        html.append("        <section class='panel'>\n");
+        html.append("            <div class='panel-head'>\n");
+        html.append("                <div class='panel-title'>Resultado completo</div>\n");
+        html.append("                <button type='button' onclick='copyResult()'>Copiar resultado</button>\n");
         html.append("            </div>\n");
-        html.append("        </div>\n");
-        html.append("        \n");
-        html.append("        <div class='footer'>\n");
-        html.append("            <p>🎓 PrimeProFast - ").append(titulo).append("</p>\n");
-        html.append("            <p>📅 ").append(new SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(new Date())).append("</p>\n");
-        html.append("        </div>\n");
-        html.append("    </div>\n");
-        html.append("    \n");
+        html.append("            <pre id='raw'>").append(resultadoSeguro).append("</pre>\n");
+        html.append("        </section>\n");
+        html.append("        <div class='footer'>PrimeProFast - visualização otimizada para leitura, seleção e compartilhamento</div>\n");
+        html.append("    </main>\n");
         html.append("    <script>\n");
-        html.append("        // Atualizar barra de progresso baseada no scroll\n");
         html.append("        window.addEventListener('scroll', () => {\n");
         html.append("            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;\n");
         html.append("            const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;\n");
-        html.append("            const scrollPercent = (scrollTop / scrollHeight) * 100;\n");
+        html.append("            const scrollPercent = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 100;\n");
         html.append("            document.getElementById('progress').style.width = scrollPercent + '%';\n");
         html.append("        });\n");
+        html.append("        function copyResult() { const text = document.getElementById('raw').innerText; if (navigator.clipboard) { navigator.clipboard.writeText(text); } }\n");
         html.append("    </script>\n");
         html.append("</body>\n");
         html.append("</html>");
         
         return html.toString();
+    }
+
+    private String escaparHtml(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        return valor
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;");
+    }
+
+    private String tituloResultadoPorPrefixo(String prefixo) {
+        if (prefixo == null) {
+            return "Resultado";
+        }
+        if (prefixo.contains("primos_aleatorios")) return "Primos Aleatórios";
+        if (prefixo.contains("conjectura_legendre")) return "Conjectura de Legendre";
+        if (prefixo.contains("mersenne")) return "Números de Mersenne";
+        if (prefixo.contains("perfeitos")) return "Números Perfeitos";
+        if (prefixo.contains("seguranca") || prefixo.contains("criptografia") || prefixo.contains("hash") || prefixo.contains("assinatura")) return "Segurança Digital";
+        if (prefixo.contains("estatisticas") || prefixo.contains("aproximacao")) return "Estatísticas";
+        if (prefixo.contains("primalidade")) return "Teste de Primalidade";
+        if (prefixo.contains("intervalo") || prefixo.contains("primos_temp")) return "Primos por Intervalo";
+        return "Resultado";
+    }
+
+    private String tipoResultadoPorPrefixo(String prefixo) {
+        if (prefixo == null || prefixo.isEmpty()) {
+            return "Relatório gerado";
+        }
+        String normalizado = prefixo.replace('_', ' ').trim();
+        return normalizado.isEmpty() ? "Relatório gerado" : normalizado;
     }
 
     /**
@@ -1826,14 +2030,19 @@ public class MainActivity extends AppCompatActivity {
         if (menuScrollView != null) {
             menuScrollView.animate().alpha(0.0f).setDuration(300).withEndAction(() -> {
                 menuScrollView.setVisibility(View.GONE);
-                contentContainer.setVisibility(View.VISIBLE);
-                contentContainer.setAlpha(0.0f);
-                contentContainer.animate().alpha(1.0f).setDuration(300);
+                mostrarTelaConteudo();
+                if (contentScrollView != null) {
+                    contentScrollView.setAlpha(0.0f);
+                    contentScrollView.animate().alpha(1.0f).setDuration(300);
+                } else {
+                    contentContainer.setAlpha(0.0f);
+                    contentContainer.animate().alpha(1.0f).setDuration(300);
+                }
             });
         } else {
             // Fallback: caso ScrollView não esteja inicializado por algum motivo
             menuContainer.setVisibility(View.GONE);
-            contentContainer.setVisibility(View.VISIBLE);
+            mostrarTelaConteudo();
         }
 
         // Após Segurança Digital, resultadoView pode estar fora do scrollView global — restaurar antes dos outros cards
@@ -1871,6 +2080,7 @@ public class MainActivity extends AppCompatActivity {
                 criarInterfaceEstatisticas();
                 break;
         }
+        rolarConteudoParaInicio();
     }
 
     private void criarInterfacePrimosIntervalo() {
@@ -1955,11 +2165,12 @@ public class MainActivity extends AppCompatActivity {
                             }
 
                             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-                            File tempFile = new File(tempDir, "primos_temp_" + timestamp + ".txt");
+                            File tempFile = new File(tempDir, "primos_temp_" + timestamp + ".html");
 
-                            FileWriter writer = new FileWriter(tempFile);
-                            writer.write(resultado);
-                            writer.close();
+                            String htmlResultado = gerarHTMLResultado("Primos por Intervalo", resultado, "primos temp");
+                            try (OutputStream os = new java.io.FileOutputStream(tempFile)) {
+                                os.write(htmlResultado.getBytes(StandardCharsets.UTF_8));
+                            }
 
                             Log.d(TAG, "Arquivo temporário criado: " + tempFile.getAbsolutePath());
 
@@ -2866,7 +3077,6 @@ public class MainActivity extends AppCompatActivity {
             cancelarOperacaoAtual.set(true);
             Toast.makeText(this, "Operação atual será cancelada...", Toast.LENGTH_SHORT).show();
         });
-        contentContainer.addView(btnCancelar);
         this.btnCancelarOperacaoAtual = btnCancelar;
 
         btnGerar.setOnClickListener(v -> {
@@ -2918,6 +3128,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         contentContainer.addView(btnGerar);
+        contentContainer.addView(btnCancelar);
 
         // Área de resultado
         contentContainer.addView(scrollView);
@@ -4354,7 +4565,7 @@ public class MainActivity extends AppCompatActivity {
             contentContainer.addView(espacador2);
 
             // Mostrar interface
-            contentContainer.setVisibility(View.VISIBLE);
+            mostrarTelaConteudo();
             if (menuScrollView != null) {
                 menuScrollView.setVisibility(View.GONE);
             } else {
@@ -6007,7 +6218,7 @@ public class MainActivity extends AppCompatActivity {
 
 
             // Mostrar interface
-            contentContainer.setVisibility(View.VISIBLE);
+            mostrarTelaConteudo();
             if (menuScrollView != null) {
                 menuScrollView.setVisibility(View.GONE);
             } else {
@@ -6578,6 +6789,7 @@ public class MainActivity extends AppCompatActivity {
 
         runOnUiThread(() -> {
             mostrarStatusOperacaoEmAndamento(alvo, titulo, 0L, detalhes);
+            rolarConteudoParaView(alvo);
         });
 
         Thread cronometroThread = new Thread(() -> {
@@ -6936,12 +7148,16 @@ public class MainActivity extends AppCompatActivity {
             }
             
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            String extensao = prefixo.startsWith("tutorial_") ? ".html" : ".txt";
+            boolean isTutorial = prefixo.startsWith("tutorial_");
+            String conteudoFinal = isTutorial
+                ? resultado
+                : gerarHTMLResultado(tituloResultadoPorPrefixo(prefixo), resultado, tipoResultadoPorPrefixo(prefixo));
+            String extensao = ".html";
             File tempFile = new File(tempDir, prefixo + "_" + timestamp + extensao);
             
-            FileWriter writer = new FileWriter(tempFile);
-            writer.write(resultado);
-            writer.close();
+            try (OutputStream os = new java.io.FileOutputStream(tempFile)) {
+                os.write(conteudoFinal.getBytes(StandardCharsets.UTF_8));
+            }
             
             // Adicionar à lista de arquivos temporários
             arquivosTemporarios.add(tempFile);
@@ -7192,7 +7408,7 @@ public class MainActivity extends AppCompatActivity {
     private void mostrarTelaUpgrade() {
         // Limpar container de conteúdo
         contentContainer.removeAllViews();
-        contentContainer.setVisibility(View.VISIBLE);
+        mostrarTelaConteudo();
         if (menuScrollView != null) {
             menuScrollView.setVisibility(View.GONE);
         } else {
@@ -7320,7 +7536,7 @@ public class MainActivity extends AppCompatActivity {
     private void mostrarEstatisticasUso() {
         // Limpar container de conteúdo
         contentContainer.removeAllViews();
-        contentContainer.setVisibility(View.VISIBLE);
+        mostrarTelaConteudo();
         if (menuScrollView != null) {
             menuScrollView.setVisibility(View.GONE);
         } else {
@@ -7459,7 +7675,7 @@ public class MainActivity extends AppCompatActivity {
     private void mostrarInformacoesApp() {
         // Limpar container de conteúdo completamente
         contentContainer.removeAllViews();
-        contentContainer.setVisibility(View.VISIBLE);
+        mostrarTelaConteudo();
         if (menuScrollView != null) {
             menuScrollView.setVisibility(View.GONE);
         } else {
@@ -7502,7 +7718,7 @@ public class MainActivity extends AppCompatActivity {
         // Informações do app
         String[] informacoes = {
             "📱 Nome: PrimeProFast",
-            "📦 Versão: 1.0.3",
+            "📦 Versão: 1.0.4",
             "📅 Data: Setembro 2025",
             "",
             "👨‍💻 Desenvolvido por:",
@@ -7608,12 +7824,16 @@ public class MainActivity extends AppCompatActivity {
             }
             
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            String extensao = prefixo.startsWith("tutorial_") ? ".html" : ".txt";
+            boolean isTutorial = prefixo.startsWith("tutorial_");
+            String conteudoFinal = isTutorial
+                ? resultado
+                : gerarHTMLResultado(tituloResultadoPorPrefixo(prefixo), resultado, tipoResultadoPorPrefixo(prefixo));
+            String extensao = ".html";
             File tempFile = new File(tempDir, prefixo + "_" + timestamp + extensao);
             
-            FileWriter writer = new FileWriter(tempFile);
-            writer.write(resultado);
-            writer.close();
+            try (OutputStream os = new java.io.FileOutputStream(tempFile)) {
+                os.write(conteudoFinal.getBytes(StandardCharsets.UTF_8));
+            }
             
             Log.d(TAG, "Arquivo persistente criado: " + tempFile.getAbsolutePath());
             
@@ -9363,5 +9583,3 @@ public class MainActivity extends AppCompatActivity {
         return resultado.toString();
     }
 }
-
-
