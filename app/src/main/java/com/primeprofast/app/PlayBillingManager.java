@@ -1,4 +1,4 @@
-package com.seuprojeto.primeprofast;
+package com.primeprofast.app;
 
 import android.app.Activity;
 import android.content.Context;

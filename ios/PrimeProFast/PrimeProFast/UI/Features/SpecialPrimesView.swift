@@ -41,8 +41,11 @@ struct SpecialPrimesView: View {
             switch selectedTipo {
             case 0: return PPFMath.twinPrimes(limit: n, count: q)
             case 1: return PPFMath.sophieGermain(limit: n, count: q)
-            default:
-                return "Tipo \(tipoLabels[selectedTipo]): em expansão para iOS — use Primos por Intervalo ou Teste de Primalidade para valores grandes."
+            case 2: return PPFMath.cousinPrimes(limit: n, count: q)
+            case 3: return PPFMath.sexyPrimes(limit: n, count: q)
+            case 4: return PPFMath.palindromicPrimes(limit: n, count: q)
+            case 5: return PPFMath.fermatPrimes(limit: n, count: q)
+            default: return "Tipo \(tipoLabels[selectedTipo]) indisponível."
             }
         }.value
         await MainActor.run {

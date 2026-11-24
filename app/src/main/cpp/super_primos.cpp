@@ -5,7 +5,7 @@
 #include <string>
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_iniciarGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_iniciarGeracaoPrimosGigantesJob(
     JNIEnv* env, jobject /* this */, jint num_bits, jint num_primos, jint num_threads, jstring caminho_arquivo) {
     std::string caminho_out;
     if (caminho_arquivo != nullptr) {
@@ -19,33 +19,33 @@ Java_com_seuprojeto_primeprofast_MainActivity_iniciarGeracaoPrimosGigantesJob(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_obterStatusGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_obterStatusGeracaoPrimosGigantesJob(
     JNIEnv* env, jobject /* this */) {
   std::string status = ppf::obter_status_geracao_primos_gigantes_job();
   return env->NewStringUTF(status.c_str());
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_geracaoPrimosGigantesJobConcluido(
+Java_com_primeprofast_app_MainActivity_geracaoPrimosGigantesJobConcluido(
     JNIEnv* /* env */, jobject /* this */) {
   return ppf::geracao_primos_gigantes_job_concluido() ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_obterResultadoGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_obterResultadoGeracaoPrimosGigantesJob(
     JNIEnv* env, jobject /* this */) {
   std::string resultado = ppf::obter_resultado_geracao_primos_gigantes_job();
   return env->NewStringUTF(resultado.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_cancelarGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_cancelarGeracaoPrimosGigantesJob(
     JNIEnv* /* env */, jobject /* this */) {
   ppf::cancelar_geracao_primos_gigantes_job();
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_testarPrimalidadeGiganteNativo(
+Java_com_primeprofast_app_MainActivity_testarPrimalidadeGiganteNativo(
     JNIEnv* env, jobject /* this */, jstring numero, jint repeticoes) {
   if (numero == nullptr) {
     return JNI_FALSE;
@@ -60,7 +60,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_testarPrimalidadeGiganteNativo(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosGrandes(
+Java_com_primeprofast_app_MainActivity_gerarPrimosGrandes(
     JNIEnv* env, jobject /* this */, jint num_bits, jint num_primos, jstring nome_arquivo, jboolean salvar_arquivo) {
   std::string nome_arquivo_str;
   if (nome_arquivo != nullptr) {
@@ -76,7 +76,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosGrandes(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_calcularPrimos(JNIEnv* env, jobject /* this */, jlong n) {
+Java_com_primeprofast_app_MainActivity_calcularPrimos(JNIEnv* env, jobject /* this */, jlong n) {
   std::string resultado = ppf::calcular_primos(n);
   return env->NewStringUTF(resultado.c_str());
 }

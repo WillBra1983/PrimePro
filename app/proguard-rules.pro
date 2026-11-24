@@ -2,7 +2,7 @@
 # ==================================================
 
 # Manter classes essenciais
--keep class com.seuprojeto.primeprofast.MainActivity {
+-keep class com.primeprofast.app.MainActivity {
     public <init>(...);
     public void onCreate(...);
     public native <methods>;

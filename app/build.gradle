@@ -1,17 +1,17 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.seuprojeto.primeprofast'
-    compileSdkVersion 35
+    namespace 'com.primeprofast.app'
+    compileSdkVersion 36
     
     // Habilitar BuildConfig para campos customizados
     buildFeatures {
         buildConfig true
     }
     defaultConfig {
-        applicationId "com.seuprojeto.primeprofast"
+        applicationId "com.primeprofast.app"
         minSdkVersion 23
-        targetSdkVersion 35
+        targetSdkVersion 36
         versionCode 8
         versionName "1.0.4"
         externalNativeBuild {
@@ -103,4 +103,4 @@ configurations.configureEach {
         force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
         force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
     }
-} 
+}

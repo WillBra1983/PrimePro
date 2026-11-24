@@ -276,7 +276,7 @@ public:
 
 // Interface JNI para geração híbrida por dígitos
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosAleatoriosHibrido(
+Java_com_primeprofast_app_MainActivity_gerarPrimosAleatoriosHibrido(
     JNIEnv* env, jobject /* this */, jint quantidade, jint digitos, jint max_tentativas) {
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -321,7 +321,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosAleatoriosHibrido(
 
 // Interface JNI para geração híbrida por bits
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosAleatoriosHibridoPorBits(
+Java_com_primeprofast_app_MainActivity_gerarPrimosAleatoriosHibridoPorBits(
     JNIEnv* env, jobject /* this */, jint quantidade, jint bits, jint max_tentativas) {
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -362,4 +362,4 @@ Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosAleatoriosHibridoPorBit
     resultado << "==================================================================\n";
     
     return env->NewStringUTF(resultado.str().c_str());
-} 
+}

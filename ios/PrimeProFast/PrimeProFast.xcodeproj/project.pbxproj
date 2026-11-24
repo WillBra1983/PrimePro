@@ -29,6 +29,14 @@
 		A10000010000000000000020 /* PPFResultFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000025 /* PPFResultFiles.swift */; };
 		A10000010000000000000021 /* PPFDocumentPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000026 /* PPFDocumentPreview.swift */; };
 		A10000010000000000000022 /* PPFResultPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000027 /* PPFResultPresenter.swift */; };
+		A10000010000000000000023 /* PrimeMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000028 /* PrimeMatchView.swift */; };
+		A10000010000000000000031 /* ppf_pm_tap.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* ppf_pm_tap.wav */; };
+		A10000010000000000000032 /* ppf_pm_prime.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* ppf_pm_prime.wav */; };
+		A10000010000000000000033 /* ppf_pm_composite.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033 /* ppf_pm_composite.wav */; };
+		A10000010000000000000034 /* ppf_pm_combo.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000034 /* ppf_pm_combo.wav */; };
+		A10000010000000000000035 /* ppf_pm_power.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000035 /* ppf_pm_power.wav */; };
+		A10000010000000000000036 /* ppf_pm_black.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000036 /* ppf_pm_black.wav */; };
+		A10000010000000000000037 /* ppf_pm_victory.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000037 /* ppf_pm_victory.wav */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +64,14 @@
 		A20000010000000000000025 /* PPFResultFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFResultFiles.swift; sourceTree = "<group>"; };
 		A20000010000000000000026 /* PPFDocumentPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFDocumentPreview.swift; sourceTree = "<group>"; };
 		A20000010000000000000027 /* PPFResultPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFResultPresenter.swift; sourceTree = "<group>"; };
+		A20000010000000000000028 /* PrimeMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeMatchView.swift; sourceTree = "<group>"; };
+		A20000010000000000000031 /* ppf_pm_tap.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_tap.wav; sourceTree = "<group>"; };
+		A20000010000000000000032 /* ppf_pm_prime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_prime.wav; sourceTree = "<group>"; };
+		A20000010000000000000033 /* ppf_pm_composite.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_composite.wav; sourceTree = "<group>"; };
+		A20000010000000000000034 /* ppf_pm_combo.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_combo.wav; sourceTree = "<group>"; };
+		A20000010000000000000035 /* ppf_pm_power.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_power.wav; sourceTree = "<group>"; };
+		A20000010000000000000036 /* ppf_pm_black.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_black.wav; sourceTree = "<group>"; };
+		A20000010000000000000037 /* ppf_pm_victory.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_victory.wav; sourceTree = "<group>"; };
 		A30000010000000000000001 /* PrimeProFast.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PrimeProFast.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -84,6 +100,7 @@
 				A50000010000000000000004 /* App */,
 				A50000010000000000000005 /* Native */,
 				A50000010000000000000006 /* UI */,
+				A50000010000000000000009 /* Resources */,
 				A20000010000000000000019 /* Assets.xcassets */,
 				A20000010000000000000020 /* Info.plist */,
 				A20000010000000000000021 /* PrimeProFast-Bridging-Header.h */,
@@ -152,9 +169,32 @@
 				A20000010000000000000015 /* PerfectNumbersView.swift */,
 				A20000010000000000000016 /* SecurityView.swift */,
 				A20000010000000000000017 /* StatisticsView.swift */,
+				A20000010000000000000028 /* PrimeMatchView.swift */,
 				A20000010000000000000018 /* PPFMath.swift */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000009 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A50000010000000000000010 /* Sounds */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A50000010000000000000010 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000031 /* ppf_pm_tap.wav */,
+				A20000010000000000000032 /* ppf_pm_prime.wav */,
+				A20000010000000000000033 /* ppf_pm_composite.wav */,
+				A20000010000000000000034 /* ppf_pm_combo.wav */,
+				A20000010000000000000035 /* ppf_pm_power.wav */,
+				A20000010000000000000036 /* ppf_pm_black.wav */,
+				A20000010000000000000037 /* ppf_pm_victory.wav */,
+			);
+			path = Sounds;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -218,6 +258,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000019 /* Assets.xcassets in Resources */,
+				A10000010000000000000031 /* ppf_pm_tap.wav in Resources */,
+				A10000010000000000000032 /* ppf_pm_prime.wav in Resources */,
+				A10000010000000000000033 /* ppf_pm_composite.wav in Resources */,
+				A10000010000000000000034 /* ppf_pm_combo.wav in Resources */,
+				A10000010000000000000035 /* ppf_pm_power.wav in Resources */,
+				A10000010000000000000036 /* ppf_pm_black.wav in Resources */,
+				A10000010000000000000037 /* ppf_pm_victory.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -263,6 +310,7 @@
 				A10000010000000000000015 /* PerfectNumbersView.swift in Sources */,
 				A10000010000000000000016 /* SecurityView.swift in Sources */,
 				A10000010000000000000017 /* StatisticsView.swift in Sources */,
+				A10000010000000000000023 /* PrimeMatchView.swift in Sources */,
 				A10000010000000000000018 /* PPFMath.swift in Sources */,
 				A10000010000000000000020 /* PPFResultFiles.swift in Sources */,
 				A10000010000000000000021 /* PPFDocumentPreview.swift in Sources */,
@@ -337,7 +385,7 @@
 					"-lgmpxx",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
+				PRODUCT_BUNDLE_IDENTIFIER = com.primeprofast.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";
@@ -375,7 +423,7 @@
 					"-lc++",
 				);
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
+				PRODUCT_BUNDLE_IDENTIFIER = com.primeprofast.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";

@@ -21,7 +21,8 @@ struct MenuView: View {
             MenuCard(title: "Números Perfeitos", emoji: "💎", description: "Números iguais à soma dos divisores.", destination: AnyView(PerfectNumbersView())),
             MenuCard(title: "Segurança Digital", emoji: "🔐", description: "RSA, hash e operações relacionadas.", destination: AnyView(SecurityView())),
             MenuCard(title: "Teste de Primalidade", emoji: "🔍", description: "Análise completa de primalidade.", destination: AnyView(PrimeTestView())),
-            MenuCard(title: "Estatísticas", emoji: "📈", description: "Resumo de uso e desempenho.", destination: AnyView(StatisticsView()))
+            MenuCard(title: "Estatísticas", emoji: "📈", description: "Resumo de uso e desempenho.", destination: AnyView(StatisticsView())),
+            MenuCard(title: "Jogo dos Primos", emoji: "🎯", description: "Combine bolinhas e forme somas primas.", destination: AnyView(PrimeMatchView()))
         ]
     }
 

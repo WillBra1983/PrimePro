@@ -182,14 +182,23 @@ enum PPFResultFiles {
 
     /// Mesmo padrão do Android: relatório + bloco com decimais completos do arquivo.
     static func appendFullDecimals(from fileURL: URL, to report: String) -> String {
-        var full = report
-        full += "\n\n--- PRIMOS (DECIMAL COMPLETO) ---\n"
         do {
-            full += try readUTF8(at: fileURL)
+            let decimals = try readUTF8(at: fileURL)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !decimals.isEmpty else {
+                return report + "\n\n--- PRIMOS (DECIMAL COMPLETO) ---\n(arquivo sem conteúdo)\n"
+            }
+            return """
+            \(report)
+
+            ==========================================
+            PRIMOS GERADOS - DECIMAL COMPLETO
+            ==========================================
+            \(decimals)
+            """
         } catch {
-            full += "(erro ao ler arquivo: \(error.localizedDescription))\n"
+            return report + "\n\n--- PRIMOS (DECIMAL COMPLETO) ---\n(erro ao ler arquivo: \(error.localizedDescription))\n"
         }
-        return full
     }
 
     static func purgeOldTemporaryResults() {

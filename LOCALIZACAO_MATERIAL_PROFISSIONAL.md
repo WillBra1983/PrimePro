@@ -22,7 +22,7 @@
 ---
 
 ## 2. Popups HTML Profissionais para Resultados
-**Localização:** `C:\PrimeSecurity\app\src\main\java\com\seuprojeto\primeprofast\MainActivity.java`
+**Localização:** `C:\PrimeSecurity\app\src\main\java\com\primeprofast\app\MainActivity.java`
 
 **Função:** `gerarHTMLResultado(String titulo, String resultado, String tipo)`
 **Linhas:** 3341-3405
@@ -94,7 +94,7 @@
    - `www/modules/sistema-tutoriais.js` - Implementação completa
 
 2. **Código Java de Referência (popup HTML):**
-   - `C:\PrimeSecurity\app\src\main\java\com\seuprojeto\primeprofast\MainActivity.java`
+   - `C:\PrimeSecurity\app\src\main\java\com\primeprofast\app\MainActivity.java`
    - Linhas 3341-3405: `gerarHTMLResultado()`
 
 3. **Estilos CSS dos Cards:**

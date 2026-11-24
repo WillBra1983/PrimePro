@@ -74,7 +74,7 @@ Para futuras atualizações, use sempre o **mesmo keystore**:
 
 ## 📊 Informações do App
 
-- **Package Name:** com.seuprojeto.primeprofast
+- **Package Name:** com.primeprofast.app
 - **Version Code:** 1
 - **Version Name:** 1.0
 - **Target SDK:** 34

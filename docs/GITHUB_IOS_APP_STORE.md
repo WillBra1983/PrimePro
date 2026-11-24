@@ -8,7 +8,7 @@ Configure no **Windows** (portal Apple + GitHub Secrets). Não precisa de Xcode 
 
 ## Visão geral
 
-1. Criar certificado **Apple Distribution** + perfil **App Store** para `com.seuprojeto.primeprofast`.
+1. Criar certificado **Apple Distribution** + perfil **App Store** para `com.primeprofast.app`.
 2. Criar **chave de API** no App Store Connect.
 3. Colar secrets no GitHub.
 4. **Actions** → **iOS App Store** → **Run workflow**.
@@ -44,7 +44,7 @@ Secrets:
 
 ## 3. Perfil App Store
 
-1. **Identificadores** → registrar `com.seuprojeto.primeprofast` (se ainda não existir).
+1. **Identificadores** → registrar `com.primeprofast.app` (se ainda não existir).
 2. **Perfis** → **App Store Connect** → app acima → certificado Distribution.
 3. Baixar `.mobileprovision`.
 
@@ -89,7 +89,7 @@ Checklist: [.github/APPLE_SECRETS_CHECKLIST.md](../.github/APPLE_SECRETS_CHECKLI
 ## 6. App Store Connect — criar o app
 
 1. **Apps** → **+** → **Novo app** → iOS.
-2. **Bundle ID:** `com.seuprojeto.primeprofast`.
+2. **Bundle ID:** `com.primeprofast.app`.
 3. **SKU:** ex. `primeprofast-ios-2026`.
 
 Metadados: ver [APP_STORE_PUBLICACAO.md](../APP_STORE_PUBLICACAO.md).
@@ -123,7 +123,7 @@ open ios/PrimeProFast/PrimeProFast.xcodeproj
 | `GMP iOS não encontrado` | Rode `scripts/build-gmp-ios.sh` no Mac (ou deixe o workflow baixar no runner) |
 | `libppf_core.a` não encontrado | Rode `scripts/build-ios-native.sh` antes do Xcode |
 | *No suitable application records* | Crie o app no App Store Connect (etapa 6) |
-| `Cannot determine the Apple ID from Bundle ID 'com.seuprojeto.primeprofast'` (altool 19) | Mesmo que acima: o registro do app no App Store Connect ainda não existe ou o bundle não bate. Crie o app (etapa 6), aguarde 1–2 min e rode o workflow de novo |
+| `Cannot determine the Apple ID from Bundle ID 'com.primeprofast.app'` (altool 19) | Mesmo que acima: o registro do app no App Store Connect ainda não existe ou o bundle não bate. Crie o app (etapa 6), aguarde 1–2 min e rode o workflow de novo |
 | `90474` / orientações iPad no upload | App é **somente iPhone** (`TARGETED_DEVICE_FAMILY = 1`); não declare iPad no Xcode nem no App Store Connect |
 | *Faltam dados de conformidade* (TestFlight) | No App Store Connect: **Nenhum dos algoritmos mencionados acima**. O app só usa matemática/GMP (primos), sem criptografia própria nem rede. `ITSAppUsesNonExemptEncryption` = false no `Info.plist` evita o modal nos próximos builds |
 | **-19232** / *bundle version must be higher* / build `4` já usado | O workflow define `CURRENT_PROJECT_VERSION` automaticamente (`run_number + 4`). Faça push das alterações recentes e rode de novo; se falhar, confira no log a linha `Build iOS (CFBundleVersion):` |
@@ -131,4 +131,4 @@ open ios/PrimeProFast/PrimeProFast.xcodeproj
 
 ---
 
-*Bundle: com.seuprojeto.primeprofast · Engine: C++/GMP (Algoritmo Especializado)*
+*Bundle: com.primeprofast.app · Engine: C++/GMP (Algoritmo Especializado)*

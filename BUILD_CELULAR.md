@@ -115,7 +115,7 @@ adb logcat | findstr "PrimeProFast"
 adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 # Abrir o app
-adb shell am start -n com.seuprojeto.primeprofast/.MainActivity
+adb shell am start -n com.primeprofast.app/.MainActivity
 ```
 
 ## 📁 Localização dos Arquivos Gerados

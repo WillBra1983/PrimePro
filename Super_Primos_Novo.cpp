@@ -412,7 +412,7 @@ static bool encontrar_primo_no_modelo(
 // ============================================================
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_testarPrimalidadeGiganteNativo(
+Java_com_primeprofast_app_MainActivity_testarPrimalidadeGiganteNativo(
     JNIEnv* env, jobject /* this */, jstring numero, jint repeticoes) {
 
     if (numero == nullptr) {
@@ -452,7 +452,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_testarPrimalidadeGiganteNativo(
 // ============================================================
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosGrandes(
+Java_com_primeprofast_app_MainActivity_gerarPrimosGrandes(
     JNIEnv* env,
     jobject /* this */,
     jint num_bits,
@@ -554,7 +554,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_gerarPrimosGrandes(
 // ============================================================
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_iniciarGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_iniciarGeracaoPrimosGigantesJob(
     JNIEnv* env,
     jobject /* this */,
     jint num_bits,
@@ -693,7 +693,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_iniciarGeracaoPrimosGigantesJob(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_obterStatusGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_obterStatusGeracaoPrimosGigantesJob(
     JNIEnv* env,
     jobject /* this */
 ) {
@@ -702,7 +702,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_obterStatusGeracaoPrimosGigantesJo
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_geracaoPrimosGigantesJobConcluido(
+Java_com_primeprofast_app_MainActivity_geracaoPrimosGigantesJobConcluido(
     JNIEnv* /* env */,
     jobject /* this */
 ) {
@@ -710,7 +710,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_geracaoPrimosGigantesJobConcluido(
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_obterResultadoGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_obterResultadoGeracaoPrimosGigantesJob(
     JNIEnv* env,
     jobject /* this */
 ) {
@@ -724,7 +724,7 @@ Java_com_seuprojeto_primeprofast_MainActivity_obterResultadoGeracaoPrimosGigante
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_cancelarGeracaoPrimosGigantesJob(
+Java_com_primeprofast_app_MainActivity_cancelarGeracaoPrimosGigantesJob(
     JNIEnv* /* env */,
     jobject /* this */
 ) {

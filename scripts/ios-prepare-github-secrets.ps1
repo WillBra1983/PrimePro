@@ -32,7 +32,7 @@ function Show-B64File {
 
 Write-Host "PrimeProFast - secrets GitHub (iOS App Store)" -ForegroundColor Green
 Write-Host ""
-Write-Host "Bundle: com.seuprojeto.primeprofast"
+Write-Host "Bundle: com.primeprofast.app"
 Write-Host "Guia: docs\GITHUB_IOS_APP_STORE.md"
 Write-Host ""
 
@@ -66,7 +66,7 @@ Write-Host ""
 
 Write-Host "Reaproveitar da Biblia DC (mesma conta Apple):" -ForegroundColor Yellow
 Write-Host "  APPLE_TEAM_ID, APPSTORE_* e opcionalmente o mesmo certificado .p12"
-Write-Host "  O perfil .mobileprovision DEVE ser novo para com.seuprojeto.primeprofast"
+Write-Host "  O perfil .mobileprovision DEVE ser novo para com.primeprofast.app"
 Write-Host ""
 
 Write-Host "Checklist: .github\APPLE_SECRETS_CHECKLIST.md"

@@ -5,7 +5,7 @@
 #include <string>
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_seuprojeto_primeprofast_MainActivity_superPrimosNativo(
+Java_com_primeprofast_app_MainActivity_superPrimosNativo(
     JNIEnv* env, jobject, jint bits, jint quantidade, jint threads, jstring caminho_arquivo) {
   std::string caminho_str;
   if (caminho_arquivo != nullptr) {

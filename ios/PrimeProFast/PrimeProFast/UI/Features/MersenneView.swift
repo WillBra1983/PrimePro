@@ -23,7 +23,7 @@ struct MersenneView: View {
         }
         loading.wrappedValue = true
         let texto = await Task.detached {
-            PPFMath.mersennePrimes(maxExponent: p, maxCount: 20)
+            PPFMath.mersennePrimes(maxExponent: p)
         }.value
         await MainActor.run {
             loading.wrappedValue = false
