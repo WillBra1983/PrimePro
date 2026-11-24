@@ -10,7 +10,7 @@
 
 | Item | Valor |
 |------|--------|
-| Bundle ID | `com.primeprofast.app` |
+| Bundle ID | `com.seuprojeto.primeprofast` |
 | Versão | 1.0 (build 3, alinhado ao Android) |
 | iOS mínimo | 16.0 |
 | Conta | Apple Developer Program |
@@ -47,6 +47,6 @@ A integração StoreKit 2 no iOS pode ser adicionada na fase seguinte; o app fun
 |-------------------------|--------------|
 | Capacitor + web | SwiftUI + C++ nativo |
 | Firebase / Google Sign-In | Não obrigatório |
-| `com.bibliadc.app` | `com.primeprofast.app` |
+| `com.bibliadc.app` | `com.seuprojeto.primeprofast` |
 
 Reaproveite da Salvation: **processo** de certificados, perfil, chave API e workflow GitHub — não o projeto `ios/` da Bíblia DC.

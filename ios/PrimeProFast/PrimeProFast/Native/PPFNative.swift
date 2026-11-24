@@ -1,7 +1,7 @@
 import Foundation
 
 enum PPFNative {
-    private static let nativeQueue = DispatchQueue(label: "com.primeprofast.app.native", qos: .userInitiated)
+    private static let nativeQueue = DispatchQueue(label: "com.seuprojeto.primeprofast.native", qos: .userInitiated)
 
     static func calcularPrimos(_ n: Int64) -> String {
         withCStringResult { ppf_calcular_primos(n) }

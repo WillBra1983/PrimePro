@@ -385,7 +385,7 @@
 					"-lgmpxx",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.primeprofast.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";
@@ -423,7 +423,7 @@
 					"-lc++",
 				);
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				PRODUCT_BUNDLE_IDENTIFIER = com.primeprofast.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.seuprojeto.primeprofast;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PrimeProFast/PrimeProFast-Bridging-Header.h";

@@ -1,6 +1,6 @@
 # App Store Connect — textos prontos (PrimeProFast)
 
-Copie e cole ao editar o app **PrimeProFast** (`com.primeprofast.app`).
+Copie e cole ao editar o app **PrimeProFast** (`com.seuprojeto.primeprofast`).
 
 **Regra Apple (2.3.10):** não mencione Android, Google Play nem outras plataformas na descrição, subtítulo, texto promocional ou notas visíveis na loja.
 
