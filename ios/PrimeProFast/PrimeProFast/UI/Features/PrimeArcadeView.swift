@@ -22,7 +22,7 @@ struct PrimeArcadeView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            SpriteView(scene: scene, preferredFramesPerSecond: 60)
+            PrimeArcadeSurface(scene: scene)
                 .aspectRatio(360.0 / 420.0, contentMode: .fit)
                 .accessibilityLabel(mode.title)
 
@@ -36,14 +36,20 @@ struct PrimeArcadeView: View {
                 .accessibilityLabel("Reiniciar")
                 .buttonStyle(.bordered)
 
-                Button {
-                    scene.primaryAction()
-                } label: {
-                    Label(mode == .runner ? "Pular" : "Atirar",
-                          systemImage: mode == .runner ? "arrow.up" : "scope")
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                if mode == .runner {
+                    Button {
+                        scene.jump()
+                    } label: {
+                        Label("Pular", systemImage: "arrow.up")
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Text("1 dedo para desviar · 2 dedos para atirar")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding(8)
@@ -55,6 +61,22 @@ struct PrimeArcadeView: View {
         .onChange(of: scenePhase) { phase in
             if phase != .active { scene.suspend() }
         }
+    }
+}
+
+private struct PrimeArcadeSurface: UIViewRepresentable {
+    let scene: PrimeArcadeScene
+
+    func makeUIView(context: Context) -> SKView {
+        let view = SKView()
+        view.isMultipleTouchEnabled = true
+        view.preferredFramesPerSecond = 60
+        view.presentScene(scene)
+        return view
+    }
+
+    func updateUIView(_ view: SKView, context: Context) {
+        if view.scene !== scene { view.presentScene(scene) }
     }
 }
 
@@ -87,6 +109,9 @@ private final class PrimeArcadeScene: SKScene {
     private let hud = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
     private let message = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
     private let field = SKNode()
+    private let scenery = SKNode()
+    private let vehicleIcon = SKLabelNode(fontNamed: "AppleColorEmoji")
+    private let shieldRing = SKShapeNode(circleOfRadius: 28)
     private let floor: CGFloat = 67
     private var pieces: [PrimeArcadePiece] = []
     private var shots: [SKShapeNode] = []
@@ -94,6 +119,12 @@ private final class PrimeArcadeScene: SKScene {
     private var spawnIn = 1.2
     private var shotDelay = 0.0
     private var shieldTime = 0.0
+    private var hitGrace = 0.0
+    private var steeringTouches: Set<UITouch> = []
+    private var twoFingerOrigin: CGPoint?
+    private var firing = false
+    private var visualTier = -1
+    private var stage = 0
     private var score = 0.0
     private var lives = 3
     private var running = false
@@ -114,23 +145,17 @@ private final class PrimeArcadeScene: SKScene {
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
     override func didMove(to view: SKView) {
+        isUserInteractionEnabled = true
         guard !installed else { return }
         installed = true
         backgroundColor = SKColor(red: 0.06, green: 0.10, blue: 0.15, alpha: 1)
-        physicsWorld.gravity = CGVector(dx: 0, dy: -15)
         addChild(field)
-        decorate()
+        scenery.zPosition = -1
+        field.addChild(scenery)
 
         if mode == .runner {
             player.path = CGPath(roundedRect: CGRect(x: -14, y: -17, width: 28, height: 34),
                                  cornerWidth: 6, cornerHeight: 6, transform: nil)
-            let ground = SKNode()
-            ground.physicsBody = SKPhysicsBody(edgeFrom: CGPoint(x: 0, y: floor), to: CGPoint(x: size.width, y: floor))
-            field.addChild(ground)
-            let body = SKPhysicsBody(rectangleOf: CGSize(width: 28, height: 34))
-            body.allowsRotation = false
-            body.restitution = 0
-            player.physicsBody = body
         } else {
             let ship = CGMutablePath()
             ship.move(to: CGPoint(x: 0, y: 20))
@@ -142,8 +167,19 @@ private final class PrimeArcadeScene: SKScene {
         player.fillColor = SKColor(red: 0.27, green: 0.76, blue: 0.97, alpha: 1)
         player.strokeColor = .white
         player.zPosition = 2
+        vehicleIcon.verticalAlignmentMode = .center
+        vehicleIcon.fontSize = 30
+        player.addChild(vehicleIcon)
         field.addChild(player)
+        shieldRing.fillColor = .cyan.withAlphaComponent(0.16)
+        shieldRing.strokeColor = .cyan
+        shieldRing.lineWidth = 3
+        shieldRing.glowWidth = 5
+        shieldRing.zPosition = 3
+        shieldRing.isHidden = true
+        field.addChild(shieldRing)
         positionPlayer()
+        updateScenery()
 
         hud.fontSize = 14
         hud.position = CGPoint(x: size.width / 2, y: size.height - 26)
@@ -157,37 +193,83 @@ private final class PrimeArcadeScene: SKScene {
         refreshHUD()
     }
 
-    private func decorate() {
+    private func updateScenery() {
+        stage = max(stage, Int(score) / (mode == .runner ? 900 : 1200))
+        let tier = stage % 3
+        guard tier != visualTier else { return }
+        visualTier = tier
+        scenery.removeAllChildren()
+        let backgrounds: [SKColor] = mode == .runner
+            ? [SKColor(red: 0.12, green: 0.34, blue: 0.29, alpha: 1),
+               SKColor(red: 0.32, green: 0.19, blue: 0.28, alpha: 1),
+               SKColor(red: 0.09, green: 0.15, blue: 0.28, alpha: 1)]
+            : [SKColor(red: 0.13, green: 0.28, blue: 0.43, alpha: 1),
+               SKColor(red: 0.21, green: 0.11, blue: 0.30, alpha: 1),
+               SKColor(red: 0.05, green: 0.24, blue: 0.27, alpha: 1)]
+        backgroundColor = backgrounds[tier]
+        vehicleIcon.text = mode == .runner ? ["🚲", "🏍️", "🏎️"][tier] : ["✈️", "🚀", "🛸"][tier]
+        player.fillColor = .clear
+        player.strokeColor = .clear
+
         let line = SKShapeNode(rectOf: CGSize(width: size.width, height: 3))
         line.position = CGPoint(x: size.width / 2, y: mode == .runner ? floor : 38)
         line.fillColor = SKColor(red: 0.08, green: 0.45, blue: 0.46, alpha: 1)
         line.strokeColor = .clear
-        field.addChild(line)
+        scenery.addChild(line)
+        if mode == .runner {
+            let skyline = CGMutablePath()
+            skyline.move(to: CGPoint(x: 0, y: floor))
+            for index in 0...12 {
+                let height = CGFloat(18 + (index * 23 + tier * 17) % 68)
+                skyline.addLine(to: CGPoint(x: CGFloat(index) * size.width / 12, y: floor + height))
+            }
+            skyline.addLine(to: CGPoint(x: size.width, y: floor))
+            skyline.closeSubpath()
+            let horizon = SKShapeNode(path: skyline)
+            horizon.fillColor = .black.withAlphaComponent(0.24)
+            horizon.strokeColor = .clear
+            scenery.addChild(horizon)
+        } else {
+            let planet = SKShapeNode(circleOfRadius: CGFloat(31 + 14 * tier))
+            planet.position = CGPoint(x: CGFloat(281 - tier * 84), y: 301)
+            planet.fillColor = .white.withAlphaComponent(0.10)
+            planet.strokeColor = .white.withAlphaComponent(0.18)
+            scenery.addChild(planet)
+        }
         for index in 0..<32 {
             let dot = SKShapeNode(circleOfRadius: index.isMultiple(of: 5) ? 1.7 : 0.8)
             dot.fillColor = .white.withAlphaComponent(index.isMultiple(of: 5) ? 0.5 : 0.23)
             dot.strokeColor = .clear
             dot.position = CGPoint(x: CGFloat((index * 71) % 353) + 4,
                                    y: CGFloat((index * 47) % 293) + 82)
-            field.addChild(dot)
+            scenery.addChild(dot)
         }
     }
 
-    func primaryAction() {
+    private func beginIfNeeded() {
         guard installed else { return }
         if ended { restart() }
         if !running {
             running = true
             field.isPaused = false
-            if mode == .runner { player.physicsBody?.isDynamic = true }
             lastFrame = nil
             message.text = ""
         }
-        if mode == .runner {
-            if player.position.y <= floor + 19, let body = player.physicsBody, abs(body.velocity.dy) < 20 {
-                body.velocity.dy = 380
-            }
-        } else if shotDelay <= 0 {
+    }
+
+    func jump() {
+        guard installed, mode == .runner else { return }
+        beginIfNeeded()
+        guard player.action(forKey: "jump") == nil else { return }
+        let up = SKAction.moveTo(y: floor + 101, duration: 0.28)
+        up.timingMode = .easeOut
+        let down = SKAction.moveTo(y: floor + 17, duration: 0.38)
+        down.timingMode = .easeIn
+        player.run(.sequence([up, down]), withKey: "jump")
+    }
+
+    private func shoot() {
+        if shotDelay <= 0 {
             let shot = SKShapeNode(rectOf: CGSize(width: 4, height: 18), cornerRadius: 2)
             shot.fillColor = .white
             shot.strokeColor = .cyan
@@ -202,6 +284,7 @@ private final class PrimeArcadeScene: SKScene {
         guard installed else { return }
         suspend()
         score = 0
+        stage = 0
         lives = 3
         ended = false
         pieces.forEach { $0.removeFromParent() }
@@ -211,8 +294,10 @@ private final class PrimeArcadeScene: SKScene {
         spawnIn = 1.2
         shotDelay = 0
         shieldTime = 0
-        player.alpha = 1
+        hitGrace = 0
+        shieldRing.isHidden = true
         positionPlayer()
+        updateScenery()
         setPrompt()
         refreshHUD()
         saveProgress()
@@ -222,15 +307,16 @@ private final class PrimeArcadeScene: SKScene {
         running = false
         lastFrame = nil
         field.isPaused = true
-        player.physicsBody?.isDynamic = false
+        steeringTouches.removeAll()
+        twoFingerOrigin = nil
+        firing = false
         saveProgress()
         if !ended { setPrompt() }
     }
 
     private func positionPlayer() {
+        player.removeAllActions()
         player.position = CGPoint(x: mode == .runner ? 60 : size.width / 2, y: mode == .runner ? floor + 17 : 49)
-        player.physicsBody?.velocity = .zero
-        player.physicsBody?.isDynamic = false
     }
 
     private func setPrompt() {
@@ -238,17 +324,48 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if mode == .shooter, let touch = touches.first {
-            moveShip(to: touch.location(in: self).x)
-            if !running { primaryAction() }
+        if mode == .shooter {
+            beginIfNeeded()
+            steeringTouches.formUnion(touches)
+            twoFingerOrigin = steeringTouches.count == 2 ? steeringCenter() : nil
+            firing = false
+            if steeringTouches.count == 1, let center = steeringCenter() { moveShip(to: center.x) }
         } else {
-            primaryAction()
+            jump()
         }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard mode == .shooter, running, let touch = touches.first else { return }
-        moveShip(to: touch.location(in: self).x)
+        guard mode == .shooter, running, let center = steeringCenter() else { return }
+        moveShip(to: center.x)
+        if steeringTouches.count == 2, let origin = twoFingerOrigin,
+           hypot(center.x - origin.x, center.y - origin.y) >= 4 {
+            firing = true
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endSteering(touches)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endSteering(touches)
+    }
+
+    private func endSteering(_ touches: Set<UITouch>) {
+        steeringTouches.subtract(touches)
+        firing = false
+        twoFingerOrigin = steeringTouches.count == 2 ? steeringCenter() : nil
+    }
+
+    private func steeringCenter() -> CGPoint? {
+        guard !steeringTouches.isEmpty else { return nil }
+        let total = steeringTouches.reduce(CGPoint.zero) { sum, touch in
+            let point = touch.location(in: self)
+            return CGPoint(x: sum.x + point.x, y: sum.y + point.y)
+        }
+        let count = CGFloat(steeringTouches.count)
+        return CGPoint(x: total.x / count, y: total.y / count)
     }
 
     private func moveShip(to x: CGFloat) {
@@ -265,7 +382,10 @@ private final class PrimeArcadeScene: SKScene {
         spawnIn -= delta
         shotDelay -= delta
         shieldTime = max(0, shieldTime - delta)
-        player.alpha = shieldTime > 0 ? 0.66 : 1
+        hitGrace = max(0, hitGrace - delta)
+        shieldRing.position = player.position
+        shieldRing.isHidden = shieldTime <= 0
+        if mode == .shooter && firing && steeringTouches.count == 2 { shoot() }
         if spawnIn <= 0 { spawn() }
 
         for shot in shots { shot.position.y += CGFloat(delta) * 390 }
@@ -290,20 +410,24 @@ private final class PrimeArcadeScene: SKScene {
                 piece.removeFromParent()
                 if piece.isPrime {
                     score += Double(piece.number * 2 + 25)
-                    if mode == .shooter { shieldTime = max(shieldTime, 1.5) }
+                    if mode == .shooter {
+                        shieldTime = max(shieldTime, 2.5)
+                        shieldRing.isHidden = false
+                    }
                 } else if mode == .runner {
                     finish()
                     break
-                } else if shieldTime <= 0 {
+                } else if shieldTime <= 0 && hitGrace <= 0 {
                     lives -= 1
                     if lives == 0 { finish(); break }
-                    shieldTime = 0.8
+                    hitGrace = 0.8
                 }
             } else if piece.position.x < -22 || piece.position.y < -22 {
                 piece.removeFromParent()
             }
         }
         pieces.removeAll { $0.parent == nil }
+        updateScenery()
         refreshHUD()
     }
 
@@ -334,9 +458,10 @@ private final class PrimeArcadeScene: SKScene {
         let points = Int(score)
         let record = max(highScore, points)
         if mode == .runner {
-            hud.text = "Pontos \(points)   •   Recorde \(record)"
+            hud.text = "Pontos \(points)   •   Recorde \(record)   •   Etapa \(stage + 1)"
         } else {
-            hud.text = "Pontos \(points)   •   Vidas \(lives)   •   Setor \(1 + points / 1200)"
+            let shield = shieldTime > 0 ? "   •   Escudo \(Int(ceil(shieldTime))) s" : ""
+            hud.text = "Pontos \(points)   •   Vidas \(lives)   •   Setor \(stage + 1)" + shield
         }
     }
 

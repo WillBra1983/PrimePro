@@ -839,7 +839,7 @@ struct PrimeMatchView: View {
                 var countedExtras: Set<Int> = []
                 var creations: [Int: Int] = [:]
                 var delta = 0
-                var equations: [String] = []
+                var previews: [(text: String, cells: Set<Int>, prime: Bool)] = []
                 let adjustmentGroup = groups.firstIndex { group in
                     [anchor, fallback].compactMap { $0 }.contains { position in
                         group.cells.contains { $0.row == position.row && $0.col == position.col }
@@ -856,9 +856,11 @@ struct PrimeMatchView: View {
                     let sum = group.sum + adjustment
                     let prime = PPFMath.isPrime(sum)
                     var points = prime ? sum : 0
+                    var highlighted = Set(group.cells.map { $0.row * cols + $0.col })
                     if prime {
                         let blast = blastTiles(for: group)
                         removed.formUnion(blast)
+                        highlighted.formUnion(blast)
                         let extras = blast.subtracting(matched).subtracting(countedExtras)
                         let extraValue = extras.reduce(0) { $0 + board[$1 / cols][$1 % cols].value }
                         if group.blackCount == 2 || PPFMath.isPrime(sum + extraValue) {
@@ -881,13 +883,16 @@ struct PrimeMatchView: View {
                     historyCounter += 1
                     history.insert("\(historyCounter). \(detail)", at: 0)
                     if history.count > 50 { history.removeLast() }
-                    equations.append(detail)
+                    previews.append((detail, highlighted, prime))
                     delta += points
                 }
-                effectCells = removed
-                effectText = equations.prefix(3).joined(separator: "\n")
-                soundPlayer.play(delta > 0 ? (chain > 0 ? "ppf_pm_combo" : "ppf_pm_prime") : "ppf_pm_composite", enabled: soundEnabled)
-                try? await Task.sleep(nanoseconds: 850_000_000)
+                for (index, preview) in previews.enumerated() {
+                    effectCells = preview.cells
+                    effectText = previews.count > 1
+                        ? "\(index + 1)/\(previews.count) · \(preview.text)" : preview.text
+                    soundPlayer.play(preview.prime ? (chain > 0 ? "ppf_pm_combo" : "ppf_pm_prime") : "ppf_pm_composite", enabled: soundEnabled)
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                }
                 var fixed = emptyMask()
                 withAnimation(.easeInOut(duration: 0.22)) {
                     remove(removed)

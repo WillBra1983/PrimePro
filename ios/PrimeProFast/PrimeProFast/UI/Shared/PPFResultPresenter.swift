@@ -12,7 +12,7 @@ extension AppState {
       let url = try PPFResultFiles.writeTemporaryResult(content, prefix: prefix)
       trackTemporaryResult(url)
       statusMessage?.wrappedValue = "Resultado gerado com sucesso! Abrindo visualizador..."
-      presentDocumentPreview(url)
+      presentDocumentPreview(url, title: PPFResultFiles.titleForPrefix(prefix), text: content)
     } catch {
       statusMessage?.wrappedValue = "Erro ao salvar arquivo temporário: \(error.localizedDescription)"
     }
@@ -21,15 +21,17 @@ extension AppState {
   /// Abre arquivo já gravado (ex.: primos_temp_… do intervalo).
   func openExistingResultViewer(
     url: URL,
+    title: String,
+    text: String,
     statusMessage: Binding<String>? = nil
   ) {
     trackTemporaryResult(url)
     statusMessage?.wrappedValue = "Resultado gerado com sucesso! Abrindo visualizador..."
-    presentDocumentPreview(url)
+    presentDocumentPreview(url, title: title, text: text)
   }
 
-  func presentDocumentPreview(_ url: URL) {
-    documentPreviewURL = url
+  private func presentDocumentPreview(_ url: URL, title: String, text: String) {
+    documentReport = PPFReport(url: url, title: title, text: text)
     showDocumentPreview = true
   }
 

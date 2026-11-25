@@ -1,4 +1,12 @@
 import Foundation
+import CoreText
+import UIKit
+
+struct PPFReport: Sendable {
+    let url: URL
+    let title: String
+    let text: String
+}
 
 /// Armazenamento de resultados — espelha `temp_primos` e `Downloads/PrimeProFast` do Android.
 enum PPFResultFiles {
@@ -47,6 +55,7 @@ enum PPFResultFiles {
 
     static func titleForPrefix(_ prefix: String) -> String {
         if prefix.contains("primos_aleatorios") { return "Primos Aleatórios" }
+        if prefix.contains("primos_especiais") { return "Primos Especiais" }
         if prefix.contains("conjectura_legendre") { return "Conjectura de Legendre" }
         if prefix.contains("mersenne") { return "Números de Mersenne" }
         if prefix.contains("perfeitos") { return "Números Perfeitos" }
@@ -55,6 +64,70 @@ enum PPFResultFiles {
         if prefix.contains("primalidade") { return "Teste de Primalidade" }
         if prefix.contains("intervalo") || prefix.contains("primos_temp") { return "Primos por Intervalo" }
         return "Resultado"
+    }
+
+    static func writePDF(_ report: PPFReport) throws -> URL {
+        let directory = try tempDirectory().appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("PrimeProFast - \(report.title).pdf")
+        let page = CGRect(x: 0, y: 0, width: 595, height: 842)
+        let body = CGRect(x: 42, y: 46, width: page.width - 84, height: page.height - 147)
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = [kCGPDFContextTitle as String: report.title,
+                               kCGPDFContextCreator as String: "PrimeProFast"]
+        let renderer = UIGraphicsPDFRenderer(bounds: page, format: format)
+        let lineLayout = NSMutableParagraphStyle()
+        lineLayout.lineBreakMode = .byCharWrapping
+        lineLayout.lineSpacing = 3
+        let bodyText = NSAttributedString(string: report.text, attributes: [
+            .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .regular),
+            .foregroundColor: UIColor(red: 0.10, green: 0.15, blue: 0.20, alpha: 1),
+            .paragraphStyle: lineLayout
+        ])
+        let framesetter = CTFramesetterCreateWithAttributedString(bodyText as CFAttributedString)
+        let path = CGPath(rect: body, transform: nil)
+        guard let logoURL = Bundle.main.url(forResource: "AppIcon-1024", withExtension: "png"),
+              let logo = UIImage(contentsOfFile: logoURL.path) else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        let titleStyle: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 18, weight: .bold), .foregroundColor: UIColor.black
+        ]
+        let noteStyle: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 11), .foregroundColor: UIColor.darkGray
+        ]
+        var offset = 0
+        var pageNumber = 0
+
+        try renderer.writePDF(to: url) { context in
+            repeat {
+                pageNumber += 1
+                context.beginPage()
+                logo.draw(in: CGRect(x: 42, y: 34, width: 44, height: 44))
+                ("PrimeProFast" as NSString).draw(at: CGPoint(x: 98, y: 36), withAttributes: titleStyle)
+                (report.title as NSString).draw(at: CGPoint(x: 98, y: 60), withAttributes: noteStyle)
+                ("PrimeProFast  |  Página \(pageNumber)" as NSString)
+                    .draw(at: CGPoint(x: 42, y: 810), withAttributes: noteStyle)
+
+                guard offset < bodyText.length else { break }
+                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: offset, length: 0), path, nil)
+                let visible = CTFrameGetVisibleStringRange(frame)
+                guard visible.length > 0 else { break }
+                let graphics = context.cgContext
+                graphics.saveGState()
+                graphics.translateBy(x: 0, y: page.height)
+                graphics.scaleBy(x: 1, y: -1)
+                graphics.textMatrix = .identity
+                CTFrameDraw(frame, graphics)
+                graphics.restoreGState()
+                offset = visible.location + visible.length
+            } while offset < bodyText.length
+        }
+        guard offset == bodyText.length else {
+            try? FileManager.default.removeItem(at: url)
+            throw CocoaError(.fileWriteUnknown)
+        }
+        return url
     }
 
     static func typeForPrefix(_ prefix: String) -> String {

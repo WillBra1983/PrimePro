@@ -60,7 +60,8 @@ struct IntervalPrimesView: View {
                 let url = try PPFResultFiles.writeIntervalTempViewFile(texto)
                 await MainActor.run {
                     loading.wrappedValue = false
-                    appState.openExistingResultViewer(url: url, statusMessage: result)
+                    appState.openExistingResultViewer(url: url, title: "Primos por Intervalo",
+                                                      text: texto, statusMessage: result)
                 }
             } catch {
                 await MainActor.run {

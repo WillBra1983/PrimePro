@@ -38,7 +38,7 @@ struct MenuView: View {
             MenuCard(title: "Corrida Prima", emoji: "🏃", description: "Pule compostos e capture primos.",
                      guide: "Toque na pista ou use Pular para saltar. Desvie dos números compostos e encoste nos primos para ganhar pontos extras e melhorar o recorde.") { AnyView(PrimeArcadeView(mode: .runner)) },
             MenuCard(title: "Resgate Espacial", emoji: "🚀", description: "Atire em compostos e resgate primos.",
-                     guide: "Arraste a nave para os lados. Use Atirar contra os compostos e recolha os primos com a nave para somar pontos. A pontuação do voo em andamento é salva quando você sai.") { AnyView(PrimeArcadeView(mode: .shooter)) }
+                     guide: "Arraste com um dedo para desviar e com dois dedos para mover e atirar. Recolha primos com a nave para ganhar pontos e ativar o escudo. A pontuação do voo em andamento é salva quando você sai.") { AnyView(PrimeArcadeView(mode: .shooter)) }
         ]
     }
 

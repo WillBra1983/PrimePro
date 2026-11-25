@@ -5,7 +5,7 @@ final class AppState: ObservableObject {
     @Published var darkMode = false
     @Published var isPremium = false
     @Published var showDocumentPreview = false
-    @Published var documentPreviewURL: URL?
+    @Published var documentReport: PPFReport?
 
     /// Rastreio de temporários (equivalente a `arquivosTemporarios` no Android).
     var temporaryResultFiles: [URL] = []
