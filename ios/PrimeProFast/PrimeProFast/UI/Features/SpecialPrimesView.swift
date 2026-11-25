@@ -3,50 +3,51 @@ import SwiftUI
 struct SpecialPrimesView: View {
     @State private var limite = "10000"
     @State private var quantidade = "10"
-    @State private var tipo = 0
+    @State private var tipo: PPFMath.SpecialFamily = .twins
     @EnvironmentObject private var appState: AppState
 
-    private let tipos = ["Gêmeos", "Sophie Germain", "Cousins", "Sexy", "Palíndromos", "Fermat"]
-
     var body: some View {
-        FeatureScaffold(title: "Primos Especiais", subtitle: "Famílias clássicas — Swift para faixa moderada.") { result, loading in
+        FeatureScaffold(title: "Primos Especiais", subtitle: "Gêmeos, Sophie Germain, Cousins, Sexy, Palíndromos e Fermat.") { result, loading in
             Picker("Tipo", selection: $tipo) {
-                ForEach(0..<tipos.count, id: \.self) { i in
-                    Text(tipos[i]).tag(i)
+                ForEach(PPFMath.SpecialFamily.allCases) { family in
+                    Text(family.rawValue).tag(family)
                 }
             }
             .pickerStyle(.menu)
-            TextField("Limite N", text: $limite)
-                .keyboardType(.numberPad)
-                .textFieldStyle(.roundedBorder)
+            if tipo == .fermat {
+                Text("Cinco primos de Fermat conhecidos.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("Limite N (até 10.000.000)", text: $limite)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+            }
             TextField("Quantidade", text: $quantidade)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
-            Button("Buscar") {
+            Button(tipo == .fermat ? "Listar primos conhecidos" : "Sortear primos especiais") {
                 Task { await buscar(result: result, loading: loading) }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(loading.wrappedValue)
         }
     }
 
     private func buscar(result: Binding<String>, loading: Binding<Bool>) async {
-        guard let n = Int(limite), let q = Int(quantidade), n > 2, q > 0 else {
-            result.wrappedValue = "Parâmetros inválidos."
+        let family = tipo
+        guard let q = Int(quantidade), (1...PPFMath.specialPrimeCountLimit).contains(q) else {
+            result.wrappedValue = "Informe uma quantidade entre 1 e 1.000."
+            return
+        }
+        let n = family == .fermat ? 2 : (Int(limite) ?? 0)
+        guard (2...PPFMath.specialPrimeLimit).contains(n) else {
+            result.wrappedValue = "Informe um limite entre 2 e 10.000.000."
             return
         }
         loading.wrappedValue = true
-        let selectedTipo = tipo
-        let tipoLabels = tipos
         let out = await Task.detached {
-            switch selectedTipo {
-            case 0: return PPFMath.twinPrimes(limit: n, count: q)
-            case 1: return PPFMath.sophieGermain(limit: n, count: q)
-            case 2: return PPFMath.cousinPrimes(limit: n, count: q)
-            case 3: return PPFMath.sexyPrimes(limit: n, count: q)
-            case 4: return PPFMath.palindromicPrimes(limit: n, count: q)
-            case 5: return PPFMath.fermatPrimes(limit: n, count: q)
-            default: return "Tipo \(tipoLabels[selectedTipo]) indisponível."
-            }
+            PPFMath.specialPrimes(family, limit: n, count: q)
         }.value
         await MainActor.run {
             loading.wrappedValue = false

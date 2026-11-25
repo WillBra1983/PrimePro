@@ -1,6 +1,40 @@
 import Foundation
 
 enum PPFNative {
+    final class Cancellation {
+        private let lock = NSLock()
+        private var requested = false
+
+        var isRequested: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return requested
+        }
+
+        func request() {
+            lock.lock()
+            defer { lock.unlock() }
+            requested = true
+        }
+    }
+
+    static func evaluateInteger(_ expression: String) -> String? {
+        expression.withCString { pointer in
+            takeOwnedString(ppf_ios_evaluate(pointer))
+        }
+    }
+
+    static func smallFactors(_ number: String) -> String? {
+        number.withCString { pointer in
+            takeOwnedString(ppf_ios_small_factors(pointer))
+        }
+    }
+
+    private static func takeOwnedString(_ pointer: UnsafeMutablePointer<CChar>?) -> String? {
+        guard let pointer else { return nil }
+        defer { ppf_ios_free(pointer) }
+        return String(cString: pointer)
+    }
     private static let nativeQueue = DispatchQueue(label: "com.seuprojeto.primeprofast.native", qos: .userInitiated)
 
     static func calcularPrimos(_ n: Int64) -> String {
@@ -58,6 +92,7 @@ enum PPFNative {
         onStatus: @escaping (String) -> Void,
         shouldCancel: @escaping () -> Bool
     ) -> String {
+        guard !shouldCancel() else { return "Operação cancelada." }
         let path = caminho.path
         iniciarJob(
             bits: Int32(bits),

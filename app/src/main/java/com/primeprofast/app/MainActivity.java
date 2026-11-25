@@ -315,6 +315,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_DAILY_CALCULATIONS = "daily_calculations";
     private static final String KEY_LAST_RESET_DATE = "last_reset_date";
     private static final String KEY_IS_PREMIUM = "is_premium";
+    private static final boolean MONETIZACAO_ATIVA = false;
     private static final String KEY_CARD_CALCULATIONS = "card_calculations_";
     private static final String KEY_CARD_RESET_DATE = "card_reset_date_";
     private static final int FREE_DAILY_LIMIT = 5; // Limite gratuito: 50 cálculos por dia
@@ -1039,8 +1040,22 @@ public class MainActivity extends AppCompatActivity {
         preferences = getSharedPreferences("PrimeProFast", MODE_PRIVATE);
         inicializarPrimeMatchAudio();
 
-        // Inicializar sistema de monetização (Google Play Billing — sem login Firebase)
         inicializarSistemaMonetizacao();
+        if (MONETIZACAO_ATIVA) {
+            iniciarComprasPlay();
+        }
+        temaEscuro = preferences.getBoolean("tema_escuro", false);
+
+        // Solicitar permissões de armazenamento
+        requestStoragePermissions();
+
+        // Otimizar layout para diferentes tamanhos de tela
+        otimizarLayoutResponsivo();
+
+        inicializarLayoutPrincipal();
+    }
+
+    private void iniciarComprasPlay() {
         playBillingManager = new PlayBillingManager(this);
         playBillingManager.start(new PlayBillingManager.Listener() {
             @Override
@@ -1070,14 +1085,9 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
-        temaEscuro = preferences.getBoolean("tema_escuro", false);
+    }
 
-        // Solicitar permissões de armazenamento
-        requestStoragePermissions();
-
-        // Otimizar layout para diferentes tamanhos de tela
-        otimizarLayoutResponsivo();
-
+    private void inicializarLayoutPrincipal() {
         // Layout principal
         rootMainLayout = new LinearLayout(this);
         rootMainLayout.setOrientation(LinearLayout.VERTICAL);
@@ -8089,13 +8099,10 @@ public class MainActivity extends AppCompatActivity {
      * Acima de {@link #LIMIAR_BITS_ROTA_NATIVA}: avisar sobrecarga local ou compra in-app de entrega por e-mail.
      */
     private void mostrarDialogoEscolhaPrimosUltra(int bits, int quantidade) {
-        new AlertDialog.Builder(this)
+        AlertDialog.Builder dialogo = new AlertDialog.Builder(this)
                 .setTitle("Primos acima de " + LIMIAR_BITS_ROTA_NATIVA + " bits")
-                .setMessage(
-                        "Gerar neste aparelho pode demorar muito, consumir bateria e esquentar o celular.\n\n"
-                                + "Você pode comprar a entrega por e-mail: o processamento é feito fora do aparelho e o resultado é enviado ao seu e-mail. "
-                                + "Esta compra é separada do plano Premium.\n\n"
-                                + "Como prefere continuar?")
+                .setMessage("Gerar neste aparelho pode demorar muito, consumir bateria e esquentar o celular."
+                        + (MONETIZACAO_ATIVA ? "\n\nTambém é possível comprar a entrega por e-mail." : ""))
                 .setPositiveButton("Gerar neste aparelho", (d, w) -> {
                     cancelarOperacaoAtual.set(false);
                     if (btnCancelarOperacaoAtual != null) {
@@ -8110,8 +8117,9 @@ public class MainActivity extends AppCompatActivity {
                         resultadoView.setText("⏳ Preparando busca nativa...");
                     }
                     new Thread(() -> executarThreadPrimosAleatorios(bits, quantidade, true, cronometroAtivo)).start();
-                })
-                .setNeutralButton("Comprar Número de " + bits + " bits", (d, w) -> {
+                });
+        if (MONETIZACAO_ATIVA) {
+            dialogo.setNeutralButton("Comprar Número de " + bits + " bits", (d, w) -> {
                     megaPedidoModoRsa = false;
                     megaPedidoBits = bits;
                     megaPedidoQuantidade = quantidade;
@@ -8120,9 +8128,9 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         Toast.makeText(this, "Pagamento indisponível.", Toast.LENGTH_SHORT).show();
                     }
-                })
-                .setNegativeButton("Cancelar", null)
-                .show();
+                });
+        }
+        dialogo.setNegativeButton("Cancelar", null).show();
     }
 
     /**
@@ -8139,15 +8147,13 @@ public class MainActivity extends AppCompatActivity {
      */
     private void mostrarDialogoEscolhaRsaUltra(int bitsChave, Runnable aoContinuarGeracaoLocal) {
         int bitsPorPrimo = bitsChave / 2;
-        new AlertDialog.Builder(this)
+        AlertDialog.Builder dialogo = new AlertDialog.Builder(this)
                 .setTitle("Chave RSA " + bitsChave + " bits (~" + bitsPorPrimo + " + " + bitsPorPrimo + " bits em p e q)")
-                .setMessage(
-                        "Gerar p e q neste aparelho pode demorar muito, consumir bateria e esquentar o celular.\n\n"
-                                + "Você pode comprar a entrega por e-mail: o par de primos e a montagem da chave RSA são feitos fora do aparelho; você recebe o resultado por e-mail. "
-                                + "Esta compra é separada do plano Premium.\n\n"
-                                + "Como prefere continuar?")
-                .setPositiveButton("Gerar neste aparelho", (d, w) -> aoContinuarGeracaoLocal.run())
-                .setNeutralButton("Comprar Número de " + bitsChave + " bits", (d, w) -> {
+                .setMessage("Gerar p e q neste aparelho pode demorar muito, consumir bateria e esquentar o celular."
+                        + (MONETIZACAO_ATIVA ? "\n\nTambém é possível comprar a entrega por e-mail." : ""))
+                .setPositiveButton("Gerar neste aparelho", (d, w) -> aoContinuarGeracaoLocal.run());
+        if (MONETIZACAO_ATIVA) {
+            dialogo.setNeutralButton("Comprar Número de " + bitsChave + " bits", (d, w) -> {
                     megaPedidoModoRsa = true;
                     megaPedidoBits = bitsChave;
                     megaPedidoQuantidade = 2;
@@ -8156,9 +8162,9 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         Toast.makeText(this, "Pagamento indisponível.", Toast.LENGTH_SHORT).show();
                     }
-                })
-                .setNegativeButton("Cancelar", null)
-                .show();
+                });
+        }
+        dialogo.setNegativeButton("Cancelar", null).show();
     }
 
     private void executarThreadPrimosAleatorios(
@@ -9196,7 +9202,10 @@ public class MainActivity extends AppCompatActivity {
 
             // Status premium
             TextView statusPremium = new TextView(this);
-            if (isPremium) {
+            if (!MONETIZACAO_ATIVA) {
+                statusPremium.setText("Acesso gratuito");
+                statusPremium.setTextColor(0xFF4CAF50);
+            } else if (isPremium) {
                 statusPremium.setText("💎 Status: PREMIUM ATIVO");
                 statusPremium.setTextColor(0xFF4CAF50);
             } else {
@@ -9210,7 +9219,9 @@ public class MainActivity extends AppCompatActivity {
 
             // Cálculos do dia
             TextView statsDia = new TextView(this);
-            if (isPremium) {
+            if (!MONETIZACAO_ATIVA) {
+                statsDia.setText("Cálculos hoje: " + dailyCalculations);
+            } else if (isPremium) {
                 statsDia.setText("✅ Cálculos hoje: Ilimitados");
             } else {
                 statsDia.setText("📊 Cálculos hoje: " + dailyCalculations + "/" + FREE_DAILY_LIMIT);
@@ -9230,10 +9241,12 @@ public class MainActivity extends AppCompatActivity {
             limiteValor.setTextSize(14);
             limiteValor.setTextColor(0xFF333333);
             limiteValor.setPadding(0, 4, 0, 4);
-            statsPessoaisLayout.addView(limiteValor);
+            if (MONETIZACAO_ATIVA) {
+                statsPessoaisLayout.addView(limiteValor);
+            }
 
             // Barra de progresso (se não premium)
-            if (!isPremium) {
+            if (MONETIZACAO_ATIVA && !isPremium) {
                 ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
                 progressBar.setMax(FREE_DAILY_LIMIT);
                 progressBar.setProgress(dailyCalculations);
@@ -9249,7 +9262,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Botão upgrade (se não premium)
-            if (!isPremium) {
+            if (MONETIZACAO_ATIVA && !isPremium) {
                 Button btnUpgrade = new Button(this);
                 btnUpgrade.setText("💎 Upgrade para Premium");
                 btnUpgrade.setBackgroundColor(0xFF4CAF50);
@@ -12174,7 +12187,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean podeRealizarCalculo(long valorEntrada) {
         // Usuário premium tem acesso ilimitado
-        if (isPremium) {
+        if (!MONETIZACAO_ATIVA || isPremium) {
             return true;
         }
 
@@ -12196,7 +12209,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean podeRealizarCalculoCard(long valorEntrada, boolean isBitValue) {
         // Usuário premium tem acesso ilimitado
-        if (isPremium) {
+        if (!MONETIZACAO_ATIVA || isPremium) {
             return true;
         }
 
@@ -12225,7 +12238,7 @@ public class MainActivity extends AppCompatActivity {
      * Registra um cálculo realizado
      */
     private void registrarCalculo() {
-        if (!isPremium) {
+        if (!MONETIZACAO_ATIVA || !isPremium) {
             dailyCalculations++;
             getSharedPreferences(PREFS_USAGE, MODE_PRIVATE)
                 .edit()
@@ -12260,7 +12273,7 @@ public class MainActivity extends AppCompatActivity {
      * Registra um cálculo no card atual
      */
     private void registrarCalculoCard() {
-        if (!isPremium && !currentCard.isEmpty()) {
+        if ((!MONETIZACAO_ATIVA || !isPremium) && !currentCard.isEmpty()) {
             cardCalculations++;
             getSharedPreferences(PREFS_USAGE, MODE_PRIVATE)
                 .edit()
@@ -12357,6 +12370,9 @@ public class MainActivity extends AppCompatActivity {
      * Mostra tela de upgrade para versão premium
      */
     private void mostrarTelaUpgrade() {
+        if (!MONETIZACAO_ATIVA) {
+            return;
+        }
         // Limpar container de conteúdo
         contentContainer.removeAllViews();
         mostrarTelaConteudo();
@@ -12512,7 +12528,10 @@ public class MainActivity extends AppCompatActivity {
 
         // Status premium
         TextView statusPremium = new TextView(this);
-        if (isPremium) {
+        if (!MONETIZACAO_ATIVA) {
+            statusPremium.setText("Acesso gratuito");
+            statusPremium.setTextColor(Color.parseColor("#4CAF50"));
+        } else if (isPremium) {
             statusPremium.setText("💎 Status: PREMIUM ATIVO");
             statusPremium.setTextColor(Color.parseColor("#4CAF50"));
         } else {
@@ -12527,7 +12546,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Estatísticas do dia
         TextView statsDia = new TextView(this);
-        if (isPremium) {
+        if (!MONETIZACAO_ATIVA) {
+            statsDia.setText("Cálculos hoje: " + dailyCalculations);
+        } else if (isPremium) {
             statsDia.setText("✅ Cálculos hoje: Ilimitados");
         } else {
             statsDia.setText("📊 Cálculos hoje: " + dailyCalculations + "/" + FREE_DAILY_LIMIT);
@@ -12547,10 +12568,12 @@ public class MainActivity extends AppCompatActivity {
         limiteValor.setTextSize(16);
         limiteValor.setTextColor(temaEscuro ? Color.WHITE : Color.BLACK);
         limiteValor.setPadding(0, 8, 0, 8);
-        statsLayout.addView(limiteValor);
+        if (MONETIZACAO_ATIVA) {
+            statsLayout.addView(limiteValor);
+        }
 
         // Estatísticas por card
-        if (!isPremium) {
+        if (!MONETIZACAO_ATIVA || !isPremium) {
             TextView tituloCards = new TextView(this);
             tituloCards.setText("📋 Estatísticas por Card");
             tituloCards.setTextSize(18);
@@ -12571,7 +12594,8 @@ public class MainActivity extends AppCompatActivity {
                 int cardCalcs = prefs.getInt(KEY_CARD_CALCULATIONS + card, 0);
 
                 TextView cardStats = new TextView(this);
-                cardStats.setText("• " + card + ": " + cardCalcs + "/" + CARD_DAILY_LIMIT + " cálculos");
+                cardStats.setText("• " + card + ": " + cardCalcs
+                        + (MONETIZACAO_ATIVA ? "/" + CARD_DAILY_LIMIT : "") + " cálculos");
                 cardStats.setTextSize(14);
                 cardStats.setTextColor(temaEscuro ? Color.LTGRAY : Color.DKGRAY);
                 cardStats.setPadding(16, 4, 0, 4);
@@ -12587,11 +12611,13 @@ public class MainActivity extends AppCompatActivity {
             limitesCards.setTextSize(14);
             limitesCards.setTextColor(temaEscuro ? Color.LTGRAY : Color.DKGRAY);
             limitesCards.setPadding(0, 8, 0, 8);
-            statsLayout.addView(limitesCards);
+            if (MONETIZACAO_ATIVA) {
+                statsLayout.addView(limitesCards);
+            }
         }
 
         // Barra de progresso (se não premium)
-        if (!isPremium) {
+        if (MONETIZACAO_ATIVA && !isPremium) {
             ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
             progressBar.setMax(FREE_DAILY_LIMIT);
             progressBar.setProgress(dailyCalculations);
@@ -12607,7 +12633,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Botões
-        if (!isPremium) {
+        if (MONETIZACAO_ATIVA && !isPremium) {
             Button btnUpgrade = criarBotaoModerno("💎 Upgrade para Premium", Color.parseColor("#4CAF50"), Color.parseColor("#388E3C"));
             btnUpgrade.setOnClickListener(v -> mostrarTelaUpgrade());
             statsLayout.addView(btnUpgrade);
@@ -12669,8 +12695,7 @@ public class MainActivity extends AppCompatActivity {
         // Informações do app
         String[] informacoes = {
             "📱 Nome: PrimeProFast",
-            "📦 Versão: 1.0.3",
-            "📅 Data: Setembro 2025",
+            "📦 Versão: " + BuildConfig.VERSION_NAME,
             "",
             "👨‍💻 Desenvolvido por:",
             "Wilson Lucas Ferreira",
@@ -12689,20 +12714,11 @@ public class MainActivity extends AppCompatActivity {
             "• Números perfeitos",
             "• Conjectura de Legendre",
             "",
-            "💎 Disponível: Versão Premium",
-            "• Cálculos ilimitados",
-            "• Números de qualquer tamanho",
-            "• Sem anúncios",
-            "• Performance otimizada",
+            MONETIZACAO_ATIVA ? "💎 Disponível: Versão Premium" : "Acesso gratuito",
             "",
             "🛡️ Segurança:",
             "• Verificação de integridade",
             "• Detecção de ambiente malicioso",
-            "",
-            "📊 Limitações Gratuitas:",
-            "• 5 cálculos por dia por card",
-            "• Até 250.000 para valores numéricos",
-            "• Até 512 bits para valores com bits",
             "",
             "🌐 Tecnologias:",
             "• Android Native (Java)",

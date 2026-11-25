@@ -72,6 +72,10 @@ enum PPFMath {
 
     static func primesUpTo(_ limit: Int) -> [Int] {
         guard limit >= 2 else { return [] }
+        return primeFlags(upTo: limit).enumerated().compactMap { $1 ? $0 : nil }
+    }
+
+    private static func primeFlags(upTo limit: Int) -> [Bool] {
         var sieve = [Bool](repeating: true, count: limit + 1)
         sieve[0] = false
         sieve[1] = false
@@ -86,91 +90,78 @@ enum PPFMath {
             }
             p += 1
         }
-        return sieve.enumerated().compactMap { $1 ? $0 : nil }
+        return sieve
     }
 
-    static func twinPrimes(limit: Int, count: Int) -> String {
-        var found: [(Int, Int)] = []
-        var p = 3
-        while p < limit && found.count < count {
-            if isPrime(p), isPrime(p + 2) {
-                found.append((p, p + 2))
-            }
-            p += 2
-        }
-        return formatPairs(found, title: "Primos gêmeos")
-    }
+    enum SpecialFamily: String, CaseIterable, Identifiable {
+        case twins = "Gêmeos"
+        case sophie = "Sophie Germain"
+        case cousins = "Cousins"
+        case sexy = "Sexy"
+        case palindromes = "Palíndromos"
+        case fermat = "Fermat"
 
-    static func sophieGermain(limit: Int, count: Int) -> String {
-        var found: [Int] = []
-        for p in primesUpTo(limit) where found.count < count {
-            let q = 2 * p + 1
-            if q <= limit, isPrime(q) {
-                found.append(p)
-            }
-        }
-        return "Sophie Germain (\(found.count)):\n" + found.map(String.init).joined(separator: ", ")
-    }
+        var id: Self { self }
 
-    static func cousinPrimes(limit: Int, count: Int) -> String {
-        primePairs(limit: limit, count: count, gap: 4, title: "Primos cousins")
-    }
-
-    static func sexyPrimes(limit: Int, count: Int) -> String {
-        primePairs(limit: limit, count: count, gap: 6, title: "Primos sexy")
-    }
-
-    static func palindromicPrimes(limit: Int, count: Int) -> String {
-        var found: [Int] = []
-        for p in primesUpTo(limit) where found.count < count {
-            let text = String(p)
-            if text == String(text.reversed()) {
-                found.append(p)
+        func partner(of prime: Int) -> Int? {
+            switch self {
+            case .twins: return prime + 2
+            case .sophie: return 2 * prime + 1
+            case .cousins: return prime + 4
+            case .sexy: return prime + 6
+            case .palindromes, .fermat: return nil
             }
         }
-        if found.isEmpty { return "Nenhum primo palíndromo encontrado." }
-        return "Primos palíndromos (\(found.count)):\n" + found.map(String.init).joined(separator: ", ")
     }
 
-    static func fermatPrimes(limit: Int, count: Int) -> String {
-        var lines: [String] = []
-        var n = 0
-        while lines.count < count {
-            let exponent = 1 << n
-            if exponent >= 63 {
-                break
-            }
-            let value = (UInt64(1) << UInt64(exponent)) + 1
-            if value > UInt64(limit) {
-                break
-            }
-            if isPrime64(value) {
-                lines.append("F\(n) = 2^\(exponent) + 1 = \(value)")
-            }
-            n += 1
+    static let specialPrimeLimit = 10_000_000
+    static let specialPrimeCountLimit = 1_000
+
+    static func specialPrimes(_ family: SpecialFamily, limit: Int, count: Int) -> String {
+        guard (1...specialPrimeCountLimit).contains(count) else { return "" }
+        if family == .fermat {
+            let known = [3, 5, 17, 257, 65537]
+            let lines = known.prefix(count).enumerated().map { "F\($0.offset) = \($0.element)" }
+            return "Primos de Fermat conhecidos (\(lines.count) de 5)\n\n" + lines.joined(separator: "\n")
         }
-        return lines.isEmpty ? "Nenhum primo de Fermat encontrado no limite." : "Primos de Fermat (\(lines.count)):\n" + lines.joined(separator: "\n")
+        guard (2...specialPrimeLimit).contains(limit) else { return "" }
+        let sieve = primeFlags(upTo: limit)
+        var sample: [Int] = []
+        var matches = 0
+        // Reservoir sampling keeps a uniform sample without storing every match.
+        for p in 2...limit where sieve[p] {
+            if let q = family.partner(of: p) {
+                guard q <= limit, sieve[q] else { continue }
+            } else {
+                let digits = String(p)
+                guard digits.elementsEqual(digits.reversed()) else { continue }
+            }
+            matches += 1
+            if sample.count < count {
+                sample.append(p)
+            } else {
+                let slot = Int.random(in: 0..<matches)
+                if slot < count { sample[slot] = p }
+            }
+        }
+        guard !sample.isEmpty else { return "Nenhum resultado até \(limit.formatted())." }
+        let lines = sample.shuffled().map { p -> String in
+            guard let q = family.partner(of: p) else { return String(p) }
+            return family == .sophie ? "\(p) (2 × \(p) + 1 = \(q))" : "(\(p), \(q))"
+        }
+        return "\(family.rawValue) | \(lines.count) de \(matches) até \(limit.formatted())\n\n" +
+            lines.joined(separator: "\n")
     }
 
     static func mersennePrimes(maxExponent: Int) -> String {
         var lines: [String] = []
-        var primeCount = 0
-        var stoppedAt64Bit = false
         for exp in primesUpTo(maxExponent) {
-            if exp >= 63 {
-                stoppedAt64Bit = true
-                break
-            }
-            let candidate = (UInt64(1) << UInt64(exp)) - 1
-            if isPrime64(candidate) {
+            if let candidate = PPFNative.evaluateInteger("2^\(exp)-1"),
+               PPFNative.testarPrimalidade(candidate) {
                 lines.append("2^\(exp) - 1 = \(candidate)")
-                primeCount += 1
             }
         }
-        if stoppedAt64Bit {
-            lines.append("Observação: expoentes >= 63 exigem a rota nativa/GMP para decimal completo.")
-        }
-        return primeCount == 0 ? "Nenhum encontrado no limite." : "Mersenne primos (\(primeCount)):\n" + lines.joined(separator: "\n")
+        return lines.isEmpty ? "Nenhum encontrado no limite." : "Mersenne provavelmente primos (\(lines.count)):\n" + lines.joined(separator: "\n")
     }
 
     static func perfectNumbers(mode: Int, limit: Int) -> String {
@@ -194,20 +185,26 @@ enum PPFMath {
         return result.isEmpty ? "Nenhum número perfeito encontrado no limite." : result.joined(separator: "\n")
     }
 
-    private static func formatPairs(_ pairs: [(Int, Int)], title: String) -> String {
-        if pairs.isEmpty { return "Nenhum par encontrado." }
-        return title + ":\n" + pairs.map { "(\($0.0), \($0.1))" }.joined(separator: "\n")
+    static func properDivisorSum(_ n: Int) -> Int {
+        guard n > 1 else { return 0 }
+        var remaining = n
+        var sum = 1
+        var factor = 2
+        while factor <= remaining / factor {
+            if remaining.isMultiple(of: factor) {
+                var power = 1
+                var term = 1
+                while remaining.isMultiple(of: factor) {
+                    remaining /= factor
+                    power *= factor
+                    term += power
+                }
+                sum *= term
+            }
+            factor += factor == 2 ? 1 : 2
+        }
+        if remaining > 1 { sum *= 1 + remaining }
+        return sum - n
     }
 
-    private static func primePairs(limit: Int, count: Int, gap: Int, title: String) -> String {
-        var found: [(Int, Int)] = []
-        var p = 3
-        while p + gap <= limit && found.count < count {
-            if isPrime(p), isPrime(p + gap) {
-                found.append((p, p + gap))
-            }
-            p += 2
-        }
-        return formatPairs(found, title: title)
-    }
 }

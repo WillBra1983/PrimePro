@@ -8,12 +8,25 @@ struct PrimeMatchTile: Identifiable, Equatable {
 }
 
 private struct PrimeMatchGroup {
-    var cells: [(row: Int, col: Int)]
-    var sum: Int
-    var colorIndex: Int
-    var blackCount: Int
-    var blackAnchor: (row: Int, col: Int)?
-    var blackValue: Int
+    let cells: [(row: Int, col: Int)]
+    let sum: Int
+    let blackCount: Int
+}
+
+private enum PrimeMatchPower: String, CaseIterable {
+    case hammer = "Martelo"
+    case plus1 = "+1 na soma"
+    case plus2 = "+2 na soma"
+    case plus3 = "+3 na soma"
+    case shuffle = "Reorganizar tabuleiro"
+    case swap = "Troca livre"
+    case copyColor = "Copiar cor"
+    case polishUp = "Lapidar +1"
+    case polishDown = "Lapidar −1"
+    case rowRay = "Raio da linha"
+    case columnRay = "Raio da coluna"
+    case hint = "Dica prima"
+    case multiplier = "Combo ×2"
 }
 
 private final class PrimeMatchSoundPlayer: ObservableObject {
@@ -57,31 +70,49 @@ struct PrimeMatchView: View {
     private let rows = 6
     private let cols = 6
     private let minChain = 3
-    private let target = 1000
+    private let levelCount = 24
+    private var target: Int { 760 + level * 140 }
+    private var unlockedLevel: Int {
+        guard let index = levelStars.lastIndex(where: { $0 > 0 }) else { return 1 }
+        return min(levelCount, index + 2)
+    }
     private let blackColorIndex = 99
     private let colors: [Color] = [
-        Color(red: 0.11, green: 0.31, blue: 0.54),
-        Color(red: 0.18, green: 0.49, blue: 0.44),
-        Color(red: 0.71, green: 0.42, blue: 0.27),
-        Color(red: 0.54, green: 0.35, blue: 0.51),
-        Color(red: 0.77, green: 0.35, blue: 0.23)
+        Color(red: 0.05, green: 0.34, blue: 0.79),
+        Color(red: 0.02, green: 0.52, blue: 0.29),
+        Color(red: 0.73, green: 0.48, blue: 0.03),
+        Color(red: 0.50, green: 0.22, blue: 0.77),
+        Color(red: 0.79, green: 0.17, blue: 0.29)
     ]
+    private let colorNames = ["Azul", "Verde", "Dourada", "Roxa", "Vermelha"]
+    private let colorSymbols = ["circle.fill", "triangle.fill", "diamond.fill", "square.fill", "hexagon.fill"]
 
     @State private var board: [[PrimeMatchTile]] = []
     @State private var selection: [(row: Int, col: Int)] = []
     @State private var dragStart: (row: Int, col: Int)?
-    @State private var dragTarget: (row: Int, col: Int)?
+    @State private var dragOffset = CGSize.zero
+    @State private var tapSource: (row: Int, col: Int)?
+    @State private var showHistory = false
+    @State private var showLevels = false
+    @State private var level = 1
     @State private var score = 0
     @State private var moves = 20
-    @State private var status = "Meta: acumule 1000 pontos. Tente criar primos cada vez maiores."
+    @State private var status = ""
     @State private var history: [String] = []
     @State private var historyCounter = 0
     @State private var active = true
     @State private var rewardGranted = false
+    @State private var tilePower: PrimeMatchPower?
+    @State private var pendingAddition: PrimeMatchPower?
+    @State private var comboMultiplier = false
+    @State private var resolving = false
+    @State private var effectCells: Set<Int> = []
+    @State private var effectText: String?
     @StateObject private var soundPlayer = PrimeMatchSoundPlayer()
     @AppStorage("prime_match_sound_enabled") private var soundEnabled = true
     @AppStorage("prime_match_best_score") private var bestScore = 0
     @AppStorage("prime_match_wins") private var wins = 0
+    @AppStorage("prime_match_level_stars") private var levelStars = Data()
     @AppStorage("prime_match_hammer") private var hammerCount = 0
     @AppStorage("prime_match_plus_1") private var plus1Count = 0
     @AppStorage("prime_match_plus_2") private var plus2Count = 0
@@ -97,80 +128,265 @@ struct PrimeMatchView: View {
     @AppStorage("prime_match_combo_mult") private var comboMultCount = 0
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Prime Match")
-                    .font(.title2.bold())
-
-                Text("Arraste uma bolinha para uma vizinha. Soma prima vira uma peça acumulada; soma composta apenas explode.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
+        GeometryReader { geometry in
+            let side = max(1, min(geometry.size.width - 12, geometry.size.height - 142, 540))
+            VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     metric(title: "Valor", value: "\(score) / \(target)")
                     metric(title: "Jogadas", value: "\(max(0, moves))")
                 }
-
-                Button(soundEnabled ? "Som ligado" : "Som desligado") {
-                    soundEnabled.toggle()
-                    soundPlayer.play("ppf_pm_tap", enabled: soundEnabled)
-                }
-                .font(.caption.weight(.bold))
-                .buttonStyle(.bordered)
-                .tint(soundEnabled ? PPFTheme.primary : Color.secondary)
-
-                Text(status)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                Text(historyText())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                if totalSavedPowers > 0 {
-                    Text(inventoryText())
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
+                .padding(.horizontal, 10)
 
                 if board.count == rows && board.allSatisfy({ $0.count == cols }) {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: cols), spacing: 6) {
-                        ForEach(0..<(rows * cols), id: \.self) { idx in
-                            let row = idx / cols
-                            let col = idx % cols
-                            tileView(row: row, col: col)
-                        }
-                    }
-                    .padding(6)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    gameBoard(side: side)
                 }
 
-                Button("Nova fase") {
-                    reset()
+                HStack {
+                    Button {
+                        soundEnabled.toggle()
+                        soundPlayer.play("ppf_pm_tap", enabled: soundEnabled)
+                    } label: {
+                        Image(systemName: soundEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .frame(minWidth: 36, minHeight: 32)
+                    }
+                    .accessibilityLabel(soundEnabled ? "Desligar som" : "Ligar som")
+                    Button {
+                        showHistory = true
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .frame(minWidth: 36, minHeight: 32)
+                    }
+                    .accessibilityLabel("Histórico")
+                    powerMenu
+                    Spacer()
+                    Button {
+                        cancelDrag()
+                        showLevels = true
+                    } label: {
+                        Label("Fases", systemImage: "square.grid.2x2")
+                    }
+                    .disabled(resolving)
+                    Button("Rejogar") { reset() }
+                        .disabled(resolving)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(PPFTheme.primary)
+                .buttonStyle(.bordered)
+                .padding(.horizontal, 10)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(status)
+                            .font(.subheadline.weight(.semibold))
+                        if totalSavedPowers > 0 {
+                            Text(inventoryText())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                }
             }
-            .padding()
         }
+        .sheet(isPresented: $showHistory) {
+            NavigationStack {
+                ScrollView {
+                    Text(historyText()).frame(maxWidth: .infinity, alignment: .leading).padding()
+                }
+                .navigationTitle("Histórico")
+                .toolbar { Button("Fechar") { showHistory = false } }
+            }
+        }
+        .sheet(isPresented: $showLevels) { levelPicker }
         .onAppear {
             if board.isEmpty {
                 reset()
             }
         }
-        .navigationTitle("Jogo dos Primos")
+        .navigationTitle("Prime Match · Fase \(level)")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var powerMenu: some View {
+        Menu {
+            ForEach(PrimeMatchPower.allCases, id: \.self) { power in
+                let count = stock(for: power).wrappedValue
+                if count > 0 {
+                    Button("\(power.rawValue) · \(count)") { arm(power) }
+                }
+            }
+            if tilePower != nil || pendingAddition != nil || comboMultiplier {
+                Button("Cancelar poderes armados") { clearPowers() }
+            }
+        } label: {
+            Image(systemName: "bolt.fill")
+                .frame(minWidth: 32, minHeight: 32)
+                .foregroundStyle(tilePower != nil || pendingAddition != nil || comboMultiplier ? .orange : .primary)
+        }
+        .accessibilityLabel("Poderes")
+        .disabled(!active || resolving || totalSavedPowers == 0)
+    }
+
+    private func stock(for power: PrimeMatchPower) -> Binding<Int> {
+        switch power {
+        case .hammer: return $hammerCount
+        case .plus1: return $plus1Count
+        case .plus2: return $plus2Count
+        case .plus3: return $plus3Count
+        case .shuffle: return $reshuffleCount
+        case .swap: return $freeSwapCount
+        case .copyColor: return $colorCopyCount
+        case .polishUp: return $polishUpCount
+        case .polishDown: return $polishDownCount
+        case .rowRay: return $rowRayCount
+        case .columnRay: return $colRayCount
+        case .hint: return $hintCount
+        case .multiplier: return $comboMultCount
+        }
+    }
+
+    private func clearPowers() {
+        tilePower = nil
+        pendingAddition = nil
+        comboMultiplier = false
+        cancelDrag()
+    }
+
+    private func arm(_ power: PrimeMatchPower) {
+        guard active, !resolving, stock(for: power).wrappedValue > 0 else { return }
+        cancelDrag()
+        tilePower = nil
+        switch power {
+        case .plus1, .plus2, .plus3:
+            pendingAddition = pendingAddition == power ? nil : power
+            status = pendingAddition == nil ? "Ajuste cancelado." : "Ajuste armado para a próxima combinação."
+        case .multiplier:
+            comboMultiplier.toggle()
+            status = comboMultiplier ? "O próximo combo primo em cascata vale o dobro." : "Multiplicador cancelado."
+        case .shuffle:
+            reshuffleCount -= 1
+            rearrangeBoard()
+        case .hint:
+            if let (start, end) = playableSwap(primeOnly: true) {
+                hintCount -= 1
+                selection = [start, end]
+                status = "Troque as duas peças destacadas."
+            } else {
+                status = "Nenhuma troca com soma prima foi encontrada."
+            }
+        default:
+            tilePower = power
+            status = power == .swap || power == .copyColor ? "Escolha a primeira peça." : "Escolha a peça para aplicar \(power.rawValue)."
+        }
+    }
+
+    private var levelPicker: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+                    ForEach(1...levelCount, id: \.self) { number in
+                        let best = number <= levelStars.count ? Int(levelStars[number - 1]) : 0
+                        Button {
+                            level = number
+                            reset()
+                            showLevels = false
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text("\(number)").font(.headline)
+                                if number > unlockedLevel {
+                                    Image(systemName: "lock.fill")
+                                } else {
+                                    Text(starsText(for: best))
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(number > unlockedLevel)
+                        .accessibilityLabel("Fase \(number), \(best) de 3 estrelas")
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Fases")
+            .toolbar { Button("Fechar") { showLevels = false } }
+        }
+    }
+
+    private func gameBoard(side: CGFloat) -> some View {
+        let inset: CGFloat = 4
+        let pitch = max(1, (side - 2 * inset) / CGFloat(cols))
+        return ZStack(alignment: .topLeading) {
+            ForEach(0..<(rows * cols), id: \.self) { idx in
+                let row = idx / cols
+                let col = idx % cols
+                let moving = dragStart?.row == row && dragStart?.col == col
+                tileView(row: row, col: col, size: max(1, pitch - 4))
+                    .position(x: inset + (CGFloat(col) + 0.5) * pitch,
+                              y: inset + (CGFloat(row) + 0.5) * pitch)
+                    .offset(moving ? dragOffset : .zero)
+                    .zIndex(moving ? 1 : 0)
+            }
+        }
+        .frame(width: side, height: side)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .bottom) {
+            if let effectText {
+                Text(effectText)
+                    .font(.caption.bold().monospacedDigit())
+                    .multilineTextAlignment(.center)
+                    .padding(8)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+        }
+        .overlay {
+            if !active && score >= target {
+                ZStack {
+                    ForEach(0..<12) { ray in
+                        Capsule()
+                            .fill(.yellow.opacity(0.45))
+                            .frame(width: side * 0.025, height: side * 0.25)
+                            .offset(y: -side * 0.35)
+                            .rotationEffect(.degrees(Double(ray) * 30))
+                    }
+                    VStack(spacing: 4) {
+                        Text(starsText(for: 3))
+                            .font(.title.bold())
+                            .foregroundStyle(.yellow)
+                        Text("Fase concluída")
+                            .font(.headline)
+                    }
+                    .padding(14)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .frame(width: side, height: side)
+                .transition(.scale.combined(with: .opacity))
+                .allowsHitTesting(false)
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 7)
+                .onChanged { value in
+                    guard active, let start = cell(at: value.startLocation, inset: inset, pitch: pitch) else { return }
+                    updateDrag(row: start.row, col: start.col, translation: value.translation, pitch: pitch)
+                }
+                .onEnded { value in
+                    guard let start = cell(at: value.startLocation, inset: inset, pitch: pitch) else {
+                        cancelDrag()
+                        return
+                    }
+                    finishDrag(row: start.row, col: start.col, translation: value.translation, pitch: pitch)
+                }
+        )
+    }
+
+    private func cell(at location: CGPoint, inset: CGFloat, pitch: CGFloat) -> (row: Int, col: Int)? {
+        let row = Int(floor((location.y - inset) / pitch))
+        let col = Int(floor((location.x - inset) / pitch))
+        guard (0..<rows).contains(row), (0..<cols).contains(col) else { return nil }
+        return (row, col)
     }
 
     private func metric(title: String, value: String) -> some View {
@@ -188,7 +404,7 @@ struct PrimeMatchView: View {
         guard !history.isEmpty else {
             return "Histórico da fase\nAinda sem cálculos."
         }
-        return "Histórico da fase\n" + history.prefix(6).joined(separator: "\n")
+        return history.joined(separator: "\n\n")
     }
 
     private var totalSavedPowers: Int {
@@ -240,31 +456,42 @@ struct PrimeMatchView: View {
         first == second || isBlack(first) || isBlack(second)
     }
 
-    private func tileView(row: Int, col: Int) -> some View {
+    private func tileView(row: Int, col: Int, size: CGFloat) -> some View {
         let tile = board[row][col]
         let selected = selection.contains { $0.row == row && $0.col == col }
         let black = isBlack(tile.colorIndex)
-        let color = black ? Color(red: 0.04, green: 0.05, blue: 0.07) : colors[max(0, tile.colorIndex) % colors.count]
-        return Text(tile.value == 0 ? "" : "\(tile.value)")
-            .font(.headline.bold())
+        let exploding = effectCells.contains(row * cols + col)
+        let index = max(0, tile.colorIndex) % colors.count
+        let color = black ? Color(red: 0.04, green: 0.05, blue: 0.07) : colors[index]
+        return VStack(spacing: 0) {
+            Image(systemName: black ? "star.fill" : colorSymbols[index])
+                .font(.system(size: max(4, size * 0.16), weight: .bold))
+            Text(tile.value == 0 ? "" : "\(tile.value)")
+                .font(.system(size: max(6, size * 0.36), weight: .heavy, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.48)
+                .padding(.horizontal, 3)
+        }
             .foregroundStyle(black ? Color(red: 0.97, green: 0.86, blue: 0.57) : .white)
             .shadow(color: .black.opacity(0.62), radius: 1.5, x: 0, y: 1)
-            .lineLimit(1)
-            .minimumScaleFactor(0.52)
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .background(glassMarble(color: color, selected: selected || black))
-            .scaleEffect(selected ? 1.12 : (black ? 1.08 : 1))
-            .opacity(active ? 1 : 0.62)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        updateDrag(row: row, col: col, translation: value.translation)
+            .frame(width: size, height: size)
+            .background(glassMarble(color: color, selected: selected))
+            .overlay {
+                if exploding {
+                    ZStack(alignment: .topTrailing) {
+                        Circle().strokeBorder(.yellow, lineWidth: 4)
+                        Image(systemName: "bolt.circle.fill")
+                            .foregroundStyle(.yellow, .black)
+                            .font(.system(size: max(10, size * 0.29)))
                     }
-                    .onEnded { value in
-                        finishDrag(row: row, col: col, translation: value.translation)
-                    }
-            )
+                }
+            }
+            .scaleEffect(selected ? 1.05 : 1)
+            .contentShape(Rectangle())
+            .onTapGesture { tapTile(row: row, col: col) }
+            .accessibilityLabel("\(tile.value), \(black ? "especial" : colorNames[index])")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { tapTile(row: row, col: col) }
     }
 
     private func glassMarble(color: Color, selected: Bool) -> some View {
@@ -280,8 +507,8 @@ struct PrimeMatchView: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                .white.opacity(0.88),
-                                color.opacity(0.96),
+                                color,
+                                color,
                                 color,
                                 .black.opacity(0.45)
                             ],
@@ -325,6 +552,8 @@ struct PrimeMatchView: View {
     }
 
     private func reset() {
+        guard !resolving else { return }
+        clearPowers()
         board = (0..<rows).map { _ in
             (0..<cols).map { _ in PrimeMatchTile(value: 0, colorIndex: 0) }
         }
@@ -336,13 +565,13 @@ struct PrimeMatchView: View {
         selection.removeAll()
         history.removeAll()
         historyCounter = 0
-        dragStart = nil
-        dragTarget = nil
+        cancelDrag()
         score = 0
-        moves = 20
+        moves = max(16, 22 - min(6, level / 4))
         active = true
         rewardGranted = false
         status = "Meta: acumule \(target) pontos. Tente criar primos cada vez maiores."
+        ensurePlayableBoard()
     }
 
     private func randomTile() -> PrimeMatchTile {
@@ -393,69 +622,118 @@ struct PrimeMatchView: View {
         return total
     }
 
-    private func updateDrag(row: Int, col: Int, translation: CGSize) {
-        guard active else { return }
+    private func updateDrag(row: Int, col: Int, translation: CGSize, pitch: CGFloat) {
+        guard active, !resolving, tilePower == nil else { return }
         if dragStart == nil {
             dragStart = (row, col)
+            tapSource = nil
             selection = [(row, col)]
             soundPlayer.play("ppf_pm_tap", enabled: soundEnabled)
             status = "Arraste para uma bolinha vizinha."
         }
         guard let start = dragStart else { return }
-        if let target = targetForDrag(row: start.row, col: start.col, translation: translation) {
-            dragTarget = target
-            selection = [start, target]
-            status = "Solte para trocar as bolinhas."
+        let target = targetForDrag(row: start.row, col: start.col, translation: translation, threshold: pitch * 0.30)
+        selection = [start] + (target.map { [$0] } ?? [])
+        if abs(translation.width) > abs(translation.height) {
+            dragOffset = CGSize(width: max(-pitch, min(pitch, translation.width)), height: 0)
+        } else {
+            dragOffset = CGSize(width: 0, height: max(-pitch, min(pitch, translation.height)))
         }
     }
 
-    private func finishDrag(row: Int, col: Int, translation: CGSize) {
-        guard active else {
-            cancelDrag()
-            return
-        }
-        if dragStart == nil {
-            dragStart = (row, col)
-        }
-        guard let start = dragStart else { return }
-        let resolvedTarget = targetForDrag(row: start.row, col: start.col, translation: translation) ?? dragTarget
-        guard let target = resolvedTarget, isNeighbor(start, target) else {
-            cancelDrag()
-            status = "Arraste para uma bolinha vizinha para fazer a troca."
-            return
-        }
+    private func finishDrag(row: Int, col: Int, translation: CGSize, pitch: CGFloat) {
+        guard !resolving, tilePower == nil else { return }
+        cancelDrag()
+        guard active, let target = targetForDrag(row: row, col: col, translation: translation,
+                                                  threshold: pitch * 0.30) else { return }
+        playSwap((row, col), target)
+    }
 
+    private func tapTile(row: Int, col: Int) {
+        guard active, !resolving, dragStart == nil else { return }
+        let tile = (row: row, col: col)
+        if let tilePower {
+            apply(tilePower, to: tile)
+            return
+        }
+        if let start = tapSource, isNeighbor(start, tile) {
+            cancelDrag()
+            playSwap(start, tile)
+        } else if tapSource?.row == row && tapSource?.col == col {
+            cancelDrag()
+        } else {
+            tapSource = tile
+            selection = [tile]
+        }
+    }
+
+    private func apply(_ power: PrimeMatchPower, to tile: (row: Int, col: Int)) {
+        let count = stock(for: power)
+        guard count.wrappedValue > 0 else { return }
+        var removed: Set<Int> = []
+        switch power {
+        case .hammer:
+            removed.insert(tile.row * cols + tile.col)
+        case .rowRay:
+            removed = Set((0..<cols).map { tile.row * cols + $0 })
+        case .columnRay:
+            removed = Set((0..<rows).map { $0 * cols + tile.col })
+        case .polishUp, .polishDown:
+            let newValue = board[tile.row][tile.col].value + (power == .polishUp ? 1 : -1)
+            guard (1...19).contains(newValue) else {
+                status = "Escolha uma peça cujo valor possa ficar entre 1 e 19."
+                return
+            }
+            board[tile.row][tile.col].value = newValue
+        case .swap, .copyColor:
+            guard let first = tapSource else {
+                tapSource = tile
+                selection = [tile]
+                status = "Escolha a segunda peça."
+                return
+            }
+            guard first.row != tile.row || first.col != tile.col else { return }
+            if power == .swap {
+                swapTiles(first, tile)
+            } else {
+                board[first.row][first.col].colorIndex = board[tile.row][tile.col].colorIndex
+            }
+        default:
+            return
+        }
+        count.wrappedValue -= 1
+        let first = tapSource
+        tilePower = nil
+        cancelDrag()
+        soundPlayer.play("ppf_pm_power", enabled: soundEnabled)
+        animateResolution(anchor: tile, fallback: first, startingRemoval: removed)
+    }
+
+    private func playSwap(_ start: (row: Int, col: Int), _ target: (row: Int, col: Int)) {
         swapTiles(start, target)
-        selection.removeAll()
 
-        let result = resolveMatches(anchor: target, fallback: start)
-        if result.removed == 0 {
+        if findMatchGroups().isEmpty {
             swapTiles(start, target)
             soundPlayer.play("ppf_pm_composite", enabled: soundEnabled)
             status = "Essa troca não formou trio. Tente outra combinação."
+            ensurePlayableBoard()
         } else {
             moves -= 1
-            soundPlayer.play(result.delta > 0 ? (result.combos > 1 ? "ppf_pm_combo" : "ppf_pm_prime") : "ppf_pm_composite", enabled: soundEnabled)
-            status = result.delta > 0
-                ? "Resolvido: \(result.removed) bolinhas em \(result.combos) combo(s). +\(result.delta) pontos acumulados."
-                : "Resolvido: \(result.summary). Sem desconto."
+            animateResolution(anchor: target, fallback: start)
         }
-
-        dragStart = nil
-        dragTarget = nil
-        checkEnd()
     }
 
     private func cancelDrag() {
         dragStart = nil
-        dragTarget = nil
+        dragOffset = .zero
+        tapSource = nil
         selection.removeAll()
     }
 
-    private func targetForDrag(row: Int, col: Int, translation: CGSize) -> (row: Int, col: Int)? {
+    private func targetForDrag(row: Int, col: Int, translation: CGSize, threshold: CGFloat) -> (row: Int, col: Int)? {
         let dx = translation.width
         let dy = translation.height
-        guard max(abs(dx), abs(dy)) > 18 else { return nil }
+        guard max(abs(dx), abs(dy)) >= threshold else { return nil }
 
         var target = (row: row, col: col)
         if abs(dx) > abs(dy) {
@@ -480,47 +758,180 @@ struct PrimeMatchView: View {
         board[second.row][second.col] = tile
     }
 
-    private func resolveMatches(anchor: (row: Int, col: Int)? = nil, fallback: (row: Int, col: Int)? = nil) -> (combos: Int, removed: Int, delta: Int, summary: String) {
-        var combos = 0
-        var removedTotal = 0
-        var deltaTotal = 0
-        var summaries: [String] = []
-        var preferredAnchor = anchor
-        var fallbackAnchor = fallback
+    private func hasPlayableSwap() -> Bool {
+        playableSwap(primeOnly: false) != nil
+    }
 
-        while combos < 12 {
-            let groups = findMatchGroups()
-            guard !groups.isEmpty else { break }
-
-            let removed = groups.reduce(0) { $0 + $1.cells.count }
-            var delta = 0
-            var fixed = Array(repeating: Array(repeating: false, count: cols), count: rows)
-            removedTotal += removed
-
-            for group in groups {
-                let prime = PPFMath.isPrime(group.sum)
-                registerHistory(group: group, combo: combos + 1, prime: prime)
-                summaries.append("\(group.sum) " + (prime ? "primo" : "composto"))
-                for cell in group.cells {
-                    board[cell.row][cell.col].value = 0
-                }
-                if prime {
-                    let anchorCell = anchorFor(group: group, preferred: preferredAnchor, fallback: fallbackAnchor)
-                    board[anchorCell.row][anchorCell.col] = PrimeMatchTile(value: group.sum, colorIndex: blackColorIndex)
-                    fixed[anchorCell.row][anchorCell.col] = true
-                    delta += group.sum
+    private func playableSwap(primeOnly: Bool) -> ((row: Int, col: Int), (row: Int, col: Int))? {
+        for row in 0..<rows {
+            for col in 0..<cols {
+                let start = (row: row, col: col)
+                for end in [(row: row + 1, col: col), (row: row, col: col + 1)]
+                    where end.row < rows && end.col < cols {
+                    let first = board[start.row][start.col].colorIndex
+                    let second = board[end.row][end.col].colorIndex
+                    guard first != second else { continue }
+                    swapTiles(start, end)
+                    let matched = findMatchGroups().contains { group in
+                        (!primeOnly || PPFMath.isPrime(group.sum)) && group.cells.contains { cell in
+                            (cell.row == start.row && cell.col == start.col) ||
+                            (cell.row == end.row && cell.col == end.col)
+                        }
+                    }
+                    swapTiles(start, end)
+                    if matched { return (start, end) }
                 }
             }
-            score += delta
-            deltaTotal += delta
-            combos += 1
-            compactBoard(fixed: fixed)
-            preferredAnchor = nil
-            fallbackAnchor = nil
         }
+        return nil
+    }
 
-        let summary = summaries.prefix(3).joined(separator: ", ")
-        return (combos, removedTotal, deltaTotal, summary.isEmpty ? "soma composta explodiu tudo" : summary)
+    private func ensurePlayableBoard() {
+        if !findMatchGroups().isEmpty || !hasPlayableSwap() { rearrangeBoard() }
+    }
+
+    private func rearrangeBoard() {
+            let pieces = board.flatMap { $0 }
+            for _ in 0..<60 {
+                let shuffled = pieces.shuffled()
+                board = (0..<rows).map { row in
+                    Array(shuffled[(row * cols)..<((row + 1) * cols)])
+                }
+                if findMatchGroups().isEmpty, hasPlayableSwap() {
+                    status = "Tabuleiro embaralhado. Nenhuma jogada foi descontada."
+                    return
+                }
+            }
+            // A-B-A over C-A-D guarantees a vertical swap that creates a horizontal trio.
+            let palette = colors.indices.shuffled()
+            board = (0..<rows).map { row in
+                (0..<cols).map { col in
+                    let pattern = (row == 0 && col == 2) || (row == 1 && col == 1) ? 0 : (row + col) % palette.count
+                    return PrimeMatchTile(value: Int.random(in: 1...19), colorIndex: palette[pattern])
+                }
+            }
+            status = "Tabuleiro renovado. Nenhuma jogada foi descontada."
+    }
+
+    private func animateResolution(anchor: (row: Int, col: Int)?,
+                                   fallback: (row: Int, col: Int)?,
+                                   startingRemoval: Set<Int> = []) {
+        resolving = true
+        Task { @MainActor in
+            defer {
+                resolving = false
+                effectText = nil
+                effectCells = []
+            }
+            if !startingRemoval.isEmpty {
+                effectCells = startingRemoval
+                effectText = "Poder aplicado"
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                remove(startingRemoval)
+                compactBoard(fixed: emptyMask())
+            }
+            let initialScore = score
+            for chain in 0..<12 {
+                let groups = findMatchGroups()
+                guard !groups.isEmpty else { break }
+                let matched = Set(groups.flatMap { $0.cells.map { $0.row * cols + $0.col } })
+                var removed = matched
+                var countedExtras: Set<Int> = []
+                var creations: [Int: Int] = [:]
+                var delta = 0
+                var equations: [String] = []
+                let adjustmentGroup = groups.firstIndex { group in
+                    [anchor, fallback].compactMap { $0 }.contains { position in
+                        group.cells.contains { $0.row == position.row && $0.col == position.col }
+                    }
+                } ?? 0
+
+                for (index, group) in groups.enumerated() {
+                    var adjustment = 0
+                    if chain == 0, index == adjustmentGroup, let power = pendingAddition {
+                        adjustment = power == .plus1 ? 1 : (power == .plus2 ? 2 : 3)
+                        stock(for: power).wrappedValue -= 1
+                        pendingAddition = nil
+                    }
+                    let sum = group.sum + adjustment
+                    let prime = PPFMath.isPrime(sum)
+                    var points = prime ? sum : 0
+                    if prime {
+                        let blast = blastTiles(for: group)
+                        removed.formUnion(blast)
+                        let extras = blast.subtracting(matched).subtracting(countedExtras)
+                        let extraValue = extras.reduce(0) { $0 + board[$1 / cols][$1 % cols].value }
+                        if group.blackCount == 2 || PPFMath.isPrime(sum + extraValue) {
+                            points += extraValue
+                            countedExtras.formUnion(extras)
+                        }
+                        if chain > 0, comboMultiplier, comboMultCount > 0 {
+                            points *= 2
+                            comboMultCount -= 1
+                            comboMultiplier = false
+                        }
+                        let position = anchorFor(group: group, preferred: chain == 0 ? anchor : nil,
+                                                 fallback: chain == 0 ? fallback : nil)
+                        let key = position.row * cols + position.col
+                        creations[key] = max(creations[key] ?? 0, sum)
+                    }
+                    let numbers = group.cells.map { String(board[$0.row][$0.col].value) }.joined(separator: " + ")
+                    let equation = numbers + (adjustment > 0 ? " + \(adjustment)" : "") + " = \(sum)"
+                    let detail = equation + (prime ? " · +\(points) pontos" : " · composto")
+                    historyCounter += 1
+                    history.insert("\(historyCounter). \(detail)", at: 0)
+                    if history.count > 50 { history.removeLast() }
+                    equations.append(detail)
+                    delta += points
+                }
+                effectCells = removed
+                effectText = equations.prefix(3).joined(separator: "\n")
+                soundPlayer.play(delta > 0 ? (chain > 0 ? "ppf_pm_combo" : "ppf_pm_prime") : "ppf_pm_composite", enabled: soundEnabled)
+                try? await Task.sleep(nanoseconds: 850_000_000)
+                var fixed = emptyMask()
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    remove(removed)
+                    for (key, value) in creations {
+                        board[key / cols][key % cols] = PrimeMatchTile(value: value, colorIndex: blackColorIndex)
+                        fixed[key / cols][key % cols] = true
+                    }
+                    compactBoard(fixed: fixed)
+                    score += delta
+                    effectCells = []
+                }
+                try? await Task.sleep(nanoseconds: 220_000_000)
+            }
+            status = score > initialScore ? "+\(score - initialScore) pontos." : "Jogada concluída."
+            checkEnd()
+            if active { ensurePlayableBoard() }
+        }
+    }
+
+    private func emptyMask() -> [[Bool]] {
+        Array(repeating: Array(repeating: false, count: cols), count: rows)
+    }
+
+    private func remove(_ cells: Set<Int>) {
+        for cell in cells { board[cell / cols][cell % cols].value = 0 }
+    }
+
+    private func blastTiles(for group: PrimeMatchGroup) -> Set<Int> {
+        guard group.blackCount > 0 else { return [] }
+        var tiles: Set<Int> = []
+        for row in 0..<rows {
+            for col in 0..<cols {
+                let adjacentToBlack = group.cells.contains { cell in
+                    isBlack(board[cell.row][cell.col].colorIndex) &&
+                    abs(cell.row - row) <= 1 && abs(cell.col - col) <= 1
+                }
+                if group.blackCount >= 3 ||
+                    (group.blackCount == 2 && PPFMath.isPrime(board[row][col].value)) ||
+                    (group.blackCount == 1 && adjacentToBlack) {
+                    tiles.insert(row * cols + col)
+                }
+            }
+        }
+        return tiles
     }
 
     private func findMatchGroups() -> [PrimeMatchGroup] {
@@ -561,11 +972,13 @@ struct PrimeMatchView: View {
                         horizontal: horizontal,
                         line: line,
                         start: start,
-                        end: end - 1,
-                        colorIndex: baseColor ?? blackColorIndex
+                        end: end - 1
                     ))
+                    start = end
+                } else {
+                    // A trailing wild tile can start a match of the next color.
+                    start += 1
                 }
-                start = max(end, start + 1)
             }
         }
     }
@@ -583,14 +996,11 @@ struct PrimeMatchView: View {
         horizontal: Bool,
         line: Int,
         start: Int,
-        end: Int,
-        colorIndex: Int
+        end: Int
     ) -> PrimeMatchGroup {
         var cells: [(row: Int, col: Int)] = []
         var sum = 0
         var blackCount = 0
-        var blackAnchor: (row: Int, col: Int)?
-        var blackValue = 0
 
         for position in start...end {
             let cell = linearCell(horizontal: horizontal, line: line, position: position)
@@ -598,60 +1008,10 @@ struct PrimeMatchView: View {
             sum += board[cell.row][cell.col].value
             if isBlack(board[cell.row][cell.col].colorIndex) {
                 blackCount += 1
-                if board[cell.row][cell.col].value > blackValue {
-                    blackValue = board[cell.row][cell.col].value
-                    blackAnchor = cell
-                }
             }
         }
 
-        return PrimeMatchGroup(
-            cells: cells,
-            sum: sum,
-            colorIndex: colorIndex,
-            blackCount: blackCount,
-            blackAnchor: blackAnchor,
-            blackValue: blackValue
-        )
-    }
-
-    private func registerHistory(group: PrimeMatchGroup, combo: Int, prime: Bool) {
-        historyCounter += 1
-        let type = combo == 1 ? "Jogada" : "Combo \(combo)"
-        let numbers = group.cells
-            .map { board[$0.row][$0.col].value }
-            .map(String.init)
-            .joined(separator: " + ")
-        let result = prime ? "primo, +\(group.sum), virou preta" : "composto, explodiu tudo, sem desconto"
-        history.insert("\(historyCounter). \(type): \(numbers) = \(group.sum) | \(result)", at: 0)
-        if history.count > 8 {
-            history.removeLast()
-        }
-    }
-
-    private func baseColorForGroup(matches: [[Bool]], row: Int, col: Int) -> Int {
-        let initial = board[row][col].colorIndex
-        guard isBlack(initial) else { return initial }
-
-        let directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]
-        for direction in directions {
-            var nextRow = row + direction.0
-            var nextCol = col + direction.1
-            while nextRow >= 0,
-                  nextRow < rows,
-                  nextCol >= 0,
-                  nextCol < cols,
-                  matches[nextRow][nextCol] {
-                let colorIndex = board[nextRow][nextCol].colorIndex
-                if !isBlack(colorIndex) {
-                    return colorIndex
-                }
-                nextRow += direction.0
-                nextCol += direction.1
-            }
-        }
-
-        return initial
+        return PrimeMatchGroup(cells: cells, sum: sum, blackCount: blackCount)
     }
 
     private func anchorFor(
@@ -671,56 +1031,6 @@ struct PrimeMatchView: View {
             }
             return first.row < second.row
         } ?? group.cells[0]
-    }
-
-    private func findMatches() -> [[Bool]] {
-        var matches = Array(repeating: Array(repeating: false, count: cols), count: rows)
-
-        for row in 0..<rows {
-            for start in 0..<cols {
-                var baseColor: Int?
-                for end in start..<cols {
-                    guard board[row][end].value != 0 else { break }
-                    let colorIndex = board[row][end].colorIndex
-                    if !isBlack(colorIndex) {
-                        if baseColor == nil {
-                            baseColor = colorIndex
-                        } else if baseColor != colorIndex {
-                            break
-                        }
-                    }
-                    if end - start + 1 >= minChain {
-                        for col in start...end {
-                            matches[row][col] = true
-                        }
-                    }
-                }
-            }
-        }
-
-        for col in 0..<cols {
-            for start in 0..<rows {
-                var baseColor: Int?
-                for end in start..<rows {
-                    guard board[end][col].value != 0 else { break }
-                    let colorIndex = board[end][col].colorIndex
-                    if !isBlack(colorIndex) {
-                        if baseColor == nil {
-                            baseColor = colorIndex
-                        } else if baseColor != colorIndex {
-                            break
-                        }
-                    }
-                    if end - start + 1 >= minChain {
-                        for row in start...end {
-                            matches[row][col] = true
-                        }
-                    }
-                }
-            }
-        }
-
-        return matches
     }
 
     private func compactBoard(fixed: [[Bool]]? = nil) {
@@ -765,7 +1075,8 @@ struct PrimeMatchView: View {
 
     private func checkEnd() {
         if score >= target {
-            active = false
+            withAnimation(.easeOut(duration: 0.35)) { active = false }
+            recordLevelStars(3)
             bestScore = max(bestScore, score)
             let rewards = grantVictoryRewards()
             soundPlayer.play("ppf_pm_victory", enabled: soundEnabled)
@@ -777,8 +1088,17 @@ struct PrimeMatchView: View {
             active = false
             bestScore = max(bestScore, score)
             let percent = progressPercent(for: score)
-            status = "Fim da fase: \(starsText(for: stars(for: score))) \(percent)% da meta. Valor: \(score). Melhor tentativa: \(bestScore)."
+            let earned = stars(for: score)
+            recordLevelStars(earned)
+            status = "Fim da fase: \(starsText(for: earned)) \(percent)% da meta. Valor: \(score). Melhor tentativa: \(bestScore)."
         }
+    }
+
+    private func recordLevelStars(_ earned: Int) {
+        var stored = Array(levelStars.prefix(levelCount))
+        stored += Array(repeating: 0, count: levelCount - stored.count)
+        stored[level - 1] = max(stored[level - 1], UInt8(earned))
+        levelStars = Data(stored)
     }
 
     private func grantVictoryRewards() -> String {

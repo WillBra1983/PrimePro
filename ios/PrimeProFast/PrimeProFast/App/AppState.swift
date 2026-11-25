@@ -4,7 +4,6 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var darkMode = false
     @Published var isPremium = false
-    @Published var cancelRequested = false
     @Published var showDocumentPreview = false
     @Published var documentPreviewURL: URL?
 
