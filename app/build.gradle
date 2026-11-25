@@ -3,6 +3,7 @@ apply plugin: 'com.android.application'
 android {
     namespace 'com.primeprofast.app'
     compileSdkVersion 36
+    ndkVersion "29.0.13113456"
     
     // Habilitar BuildConfig para campos customizados
     buildFeatures {
@@ -10,9 +11,9 @@ android {
     }
     defaultConfig {
         applicationId "com.primeprofast.app"
-        minSdkVersion 23
+        minSdkVersion 24
         targetSdkVersion 36
-        versionCode 9
+        versionCode 10
         versionName "1.0.5"
         externalNativeBuild {
             cmake {
@@ -21,6 +22,12 @@ android {
         }
         ndk {
             abiFilters "arm64-v8a"
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            // AGP 8.1 needs compressed JNI libraries for 16 KB devices.
+            useLegacyPackaging true
         }
     }
     signingConfigs {
