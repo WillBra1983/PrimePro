@@ -1,0 +1,63 @@
+{
+  "Primos por Intervalo": [
+    ["O que este card faz","<p>Você escolhe um <strong>limite máximo N</strong> e o aplicativo <strong>lista todos os números primos de 2 até N</strong> (ou o intervalo indicado na tela, conforme a opção disponível).</p><div class='exemplo'><strong>Em outras palavras:</strong> é uma forma rápida de ver “quais são os primos até aqui”, útil para estudo, conferência de listas ou curiosidade.</div>"],
+    ["Como usar","<p>Digite o valor limite (ou intervalo, se a tela pedir início e fim), confirme e aguarde o resultado. Números muito grandes podem demorar mais ou exigir limites por segurança.</p><ul><li>Use valores moderados primeiro para se familiarizar com o ritmo do app.</li><li>O resultado costuma poder ser guardado ou partilhado como nos outros cards.</li></ul>"],
+    ["Um pouco de contexto (sem “aula longa”)","<p>Há séculos se usa a ideia de <strong>marcar múltiplos</strong> de primos pequenos para achar primos num intervalo — o famoso <strong>crivo de Eratóstenes</strong> na escola. O importante aqui: <strong>este card é a ferramenta prática</strong> que faz esse trabalho pesado por você.</p><p>Quanto maior N, mais números existem para analisar; por isso o app pode avisar limites ou tempo de espera.</p>"]
+  ],
+  "Primos Especiais": [
+    ["O que este card faz","<p>Aqui você <strong>não lista todos os primos até N</strong>, mas sim pede exemplos de <strong>famílias famosas</strong>: gêmeos (p e p+2), Sophie Germain, primos “cousins”, sexy, palíndromos, Fermat, etc.</p><div class='exemplo'><strong>Objetivo:</strong> explorar padrões e nomes que a teoria dos números deu a certos primos que se comportam de modo especial.</div>"],
+    ["Como usar","<p>Escolha o <strong>tipo</strong> no menu, informe <strong>quantos exemplos</strong> quer e, se pedido, até onde buscar. O app gera uma lista que você pode ler e comparar com o que estudou.</p>"],
+    ["Por que isso interessa","<p>Muitas conjecturas abertas da matemática falam justamente dessas famílias (por exemplo, se existem infinitos primos gêmeos). Ver exemplos concretos ajuda a entender <strong>o que cada definição significa</strong>, sem precisar calcular à mão.</p>"]
+  ],
+  "Primos Aleatórios": [
+    ["O que este card faz","<p>Você define <strong>quantos primos</strong> quer e <strong>de qual tamanho em bits</strong> (ordem de grandeza do número). O app <strong>procura candidatos aleatórios</strong> desse tamanho e <strong>confirma se são primos</strong>, até completar a quantidade pedida.</p><div class='exemplo'><strong>Diferença do “intervalo”:</strong> aqui não listamos todos até um limite; geramos poucos primos <em>muito grandes</em>, um por um.</div>"],
+    ["Como usar","<p>Preencha quantidade e bits conforme a tela. Comece com <strong>poucos bits</strong> para ver o fluxo; valores enormes podem levar tempo ou atingir limites do aparelho — isso é normal em qualquer ferramenta séria.</p>"],
+    ["Por que primos “gigantes” importam","<p>No dia a dia digital, chaves de <strong>HTTPS</strong>, aplicativos bancários e mensagens seguras dependem de números que, na prática, são produtos de <strong>primos enormes</strong>. Não é exagero: a “força” de muitos sistemas vem justamente de usar primos grandes e bem escolhidos.</p><p>Projetos coletivos (como buscas por <strong>primos de Mersenne</strong>) mostram também o lado humano: milhares de pessoas contribuem CPU para descobrir recordes — mistura de matemática, engenharia e curiosidade.</p><p>Este card coloca você no papel de <strong>pedir primos grandes de propósito</strong>, como fazem, em escala profissional, geradores de chaves criptográficas — sempre dentro do que o app permite em tempo e memória.</p>"]
+  ],
+  "Conjectura de Legendre": [
+    ["O que é a conjectura de Legendre","<p><strong>Ideia central:</strong> para cada número natural <em>n</em>, deveria sempre existir pelo menos um primo entre <strong>n²</strong> e <strong>(n+1)²</strong>. É uma afirmação simples de enunciar e <strong>ainda não demonstrada</strong> em geral, embora tenha sido verificada para valores enormes com computador.</p>"],
+    ["O que este card faz","<p>O app <strong>testa a conjectura</strong> para o intervalo de <em>n</em> que você indicar: para cada <em>n</em>, verifica se há primo entre os quadrados consecutivos. O resultado mostra onde a conjectura “passa” ou onde encontrou falha (se alguma aparecer no intervalo testado).</p><div class='exemplo'>Use isto como <strong>exploração numérica</strong>, não como prova matemática do problema em todo o infinito.</div>"],
+    ["Como interpretar","<p>Se em todos os <em>n</em> testados apareceu pelo menos um primo no intervalo, você só viu evidência <strong>naquele trecho</strong>. A matemática continua aberta para uma demonstração geral ou um contra-exemplo teórico.</p>"]
+  ],
+  "Números de Mersenne": [
+    ["O que são números de Mersenne","<p>Leva o nome do padre e estudioso <strong>Marin Mersenne</strong>. Um <strong>número de Mersenne</strong> tem a forma <strong>M(p) = 2<sup>p</sup> − 1</strong> (na definição clássica que você vê no card).</p><p>Quando esse número <em>também</em> é primo, chamamo-lo de <strong>primo de Mersenne</strong>. Nem todo <em>p</em> primo gera um Mersenne primo — há contra-exemplos clássicos nos livros.</p>"],
+    ["O que este card faz","<p>Você informa o <strong>expoente p</strong> (pode ser um número ou uma expressão que o app calcula). O app calcula <strong>2<sup>p</sup> − 1</strong>, diz se <em>p</em> é primo (condição necessária para Mersenne primo), testa se <strong>M(p)</strong> é primo e compara com uma <strong>lista de expoentes já conhecidos</strong> pela comunidade matemática.</p>"],
+    ["Ligação com números perfeitos (ideia curta)","<p>Um teorema clássico (Euclides/Euler) liga <strong>primos de Mersenne</strong> a <strong>números perfeitos pares</strong>. Se quiser a fundo, use também o card de Números Perfeitos; aqui basta saber que Mersenne não é só curiosidade: é peça de um quebra-cabeça histórico da teoria dos números.</p>"]
+  ],
+  "Números Perfeitos": [
+    ["O que é número perfeito","<p>Um número é <strong>perfeito</strong> quando é igual à <strong>soma dos seus divisores próprios</strong> (todos os divisores positivos menores que ele). O exemplo clássico é <strong>6 = 1 + 2 + 3</strong>.</p>"],
+    ["O que este card faz","<p>Dependendo do modo que a tela oferece, você pode <strong>verificar um candidato</strong>, <strong>buscar exemplos</strong> com certo número de dígitos ou explorar modos educativos que o app descreve nos botões. O objetivo é <strong>ligar a definição</strong> a <strong>experimentos numéricos</strong>.</p>"],
+    ["Contexto breve","<p>Todos os perfeitos <strong>pares</strong> conhecidos seguem a forma ligada a <strong>primos de Mersenne</strong>; não se conhece hoje um perfeito <strong>ímpar</strong> — problema ainda em aberto. O card ajuda a sentir o tamanho e a raridade desses objetos.</p>"]
+  ],
+  "Segurança Digital": [
+    ["O que este card representa","<p>É a área do app dedicada a <strong>ideias de criptografia</strong> usando números grandes: chaves públicas/privadas no estilo <strong>RSA</strong>, <strong>funções de resumo (hash)</strong> e <strong>assinatura digital</strong> em linguagem de exemplo — para <strong>aprender o fluxo</strong>, não para substituir um produto bancário.</p>"],
+    ["Como usar com bom senso","<p>Gerar chaves e ver mensagens “de exemplo” ajuda a ver <strong>por que primos grandes entram na história</strong>. Trate sempre como <strong>demonstração didática</strong>; chaves reais exigem software e normas específicas fora do escopo de um app educativo.</p>"],
+    ["O que você leva daqui","<p>Intuição sobre <strong>por que multiplicar dois primos é fácil</strong> e <strong>fatorar o produto é difícil</strong> quando os números são enormes — ideia central por trás de muita segurança na internet.</p>"]
+  ],
+  "Teste de Primalidade": [
+    ["O que este card faz","<p>Você digita um <strong>número inteiro</strong> ou uma <strong>expressão</strong> (por exemplo, somas, produtos, potências com ^) e o app <strong>calcula o valor</strong> e responde se é <strong>primo ou composto</strong>, com fatoração quando isso é viável para o tamanho do número.</p><div class='exemplo'><strong>Primo:</strong> só divide por 1 e por si. <strong>Composto:</strong> tem outros divisores. O 1 é tratado como caso especial na matemática escolar.</div>"],
+    ["Como usar bem","<p>Use a caixa de texto para números grandes ou expressões; leia o relatório com calma — ele mostra o valor analisado, quantos dígitos tem e o veredito. Números com <strong>muitíssimos dígitos</strong> podem limitar o detalhe da fatoração; o teste de composto/primo continua o foco.</p>"],
+    ["Por que isso é útil","<p>É o “<strong>multímetro</strong>” do app: antes de explorar Mersenne, RSA de brinquedo ou estatísticas, você confirma <strong>o status de um inteiro concreto</strong>. Ajuda também a validar contas de exercícios e a construir intuição sobre o quão rápido cresce a dificuldade quando o número aumenta.</p>"]
+  ],
+  "Estatísticas": [
+    ["O que este card faz","<p>Concentra-se em <strong>visão geral</strong>: quantos primos existem até um certo limite, <strong>densidade</strong>, comparações com aproximações clássicas (como a ideia de que “aos poucos os primos ficam mais raros” em proporção), e outras métricas que a tela listar.</p><div class='exemplo'>Pense em um <strong>painel de resumo</strong> da “floresta” dos primos, não em achar um primo específico.</div>"],
+    ["Como usar","<p>Informe o limite ou parâmetros pedidos e interprete os números como <strong>tendências</strong>. Suba o limite gradualmente para ver como tempo de cálculo e memória reagem.</p>"],
+    ["O que aprender com isso","<p>A distribuição dos primos foi um dos grandes temas dos últimos séculos; ver <strong>contagens reais</strong> ajuda a conectar o que os livros chamam de teorema dos números primos ou função π(n) com <strong>dados que você mesmo gerou</strong> no aparelho.</p>"]
+  ],
+  "Jogo dos Primos": [
+    ["Ideia do jogo","<p>O jogo mistura tabuleiro casual com teoria dos números: você combina bolinhas da mesma cor, soma os valores e tenta formar <strong>números primos</strong>. Somas primas viram peças acumuladas; somas compostas apenas explodem e abrem espaço.</p>"],
+    ["Como a fase funciona","<p>Cada fase tem uma meta alta de valor acumulado e um número limitado de jogadas. O desempenho final vira estrelas: 0 a 32% não gera estrela, 33% a 65% gera uma, 66% a 99% gera duas e 100% gera três.</p>"],
+    ["Poderes acumulados","<p>Ao vencer fases, você guarda ferramentas especiais. Nem todas aparecem ao mesmo tempo: cada fase mostra uma linha pequena de poderes ativos abaixo do tabuleiro, variando conforme o avanço.</p>"],
+    ["O que treina","<p>Além de diversão, o jogo cria intuição sobre paridade, divisibilidade, compostos óbvios e primos pequenos, sem transformar a experiência em uma aula formal.</p>"]
+  ],
+  "Corrida Prima": [
+    ["Ideia do jogo","<p>Cada composto pulado e cada primo recolhido valem o número que mostram. Pular um 12 e recolher um 7 vale 19 pontos. A distância por si só não pontua.</p>"],
+    ["Como jogar","<p>Toque na pista ou use <strong>Pular</strong> para saltar sobre compostos. Encoste nos primos para recolhê-los. Aos 450 pontos, você passa da bicicleta para a moto; aos 900, para o carro.</p>"],
+    ["O que treina","<p>Reconhecer números primos rapidamente ajuda a decidir quando pular e quando continuar correndo.</p>"]
+  ],
+  "Resgate Espacial": [
+    ["Ideia do jogo","<p>Cada composto destruído e cada primo resgatado valem o número que mostram. Resgatar um primo também ativa o escudo. Atirar em um primo ou apenas desviar de um composto não pontua.</p>"],
+    ["Como jogar","<p>Use a faixa abaixo do veículo. Arraste com <strong>um dedo</strong> para desviar e com <strong>dois dedos</strong> para mover e atirar. Aproxime-se dos primos para capturá-los.</p>"],
+    ["Progresso","<p>Aos 600 pontos, o avião dá lugar ao foguete; aos 1.200, à nave. O voo é infinito e o progresso fica salvo no aparelho.</p>"]
+  ]
+}
