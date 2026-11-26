@@ -102,12 +102,12 @@ private struct PrimeArcadeSurface: UIViewRepresentable {
 private final class PrimeArcadePiece: SKShapeNode {
     let number: Int
     let isPrime: Bool
-    let speed: CGFloat
+    let travelSpeed: CGFloat
 
-    init(number: Int, prime: Bool, flight: Bool, speed: CGFloat) {
+    init(number: Int, prime: Bool, flight: Bool, travelSpeed: CGFloat) {
         self.number = number
         self.isPrime = prime
-        self.speed = speed
+        self.travelSpeed = travelSpeed
         super.init()
         let radius: CGFloat = flight ? (prime ? 22 : 20) : 26
         path = CGPath(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
@@ -612,7 +612,7 @@ private final class PrimeArcadeScene: SKScene {
             }
         }
         for piece in pieces.reversed() where piece.parent != nil {
-            piece.position.y -= CGFloat(delta) * piece.speed
+            piece.position.y -= CGFloat(delta) * piece.travelSpeed
             if piece.position.y < -margin {
                 piece.removeFromParent()
                 continue
@@ -656,7 +656,7 @@ private final class PrimeArcadeScene: SKScene {
             UInt32.random(in: UInt32.min...UInt32.max), previousNumber)
         previousNumber = draw.number
         let piece = PrimeArcadePiece(number: Int(draw.number), prime: draw.prime,
-                                    flight: flight, speed: CGFloat(draw.speed))
+                                    flight: flight, travelSpeed: CGFloat(draw.speed))
         if flight {
             let margin = min(size.width / 2, CGFloat(arcadeRules.ship_margin))
             let x = margin + (size.width - 2 * margin) * CGFloat(draw.lane) / CGFloat(PPF_ARCADE_LANE_MAX)
