@@ -12,6 +12,13 @@ add_library(ppf_core STATIC
     "${CPP_ROOT}/ppf_engine.cpp"
     "${CPP_ROOT}/ppf_standalone_engine.cpp"
     "${CPP_ROOT}/ppf_c_api.cpp"
+    "${CPP_ROOT}/ppf_arcade.cpp"
+    "${CPP_ROOT}/ppf_prime_cards.cpp"
+    "${CPP_ROOT}/ppf_legendre_large.cpp"
+    "${CPP_ROOT}/ppf_mersenne.cpp"
+    "${CPP_ROOT}/ppf_factorization.cpp"
+    "${CPP_ROOT}/ppf_integer_expression.cpp"
+    "${CPP_ROOT}/ppf_match.cpp"
 )
 
 target_include_directories(ppf_core PUBLIC "${CPP_ROOT}" "${GMP_INCLUDE}")

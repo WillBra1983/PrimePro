@@ -8,10 +8,9 @@ struct PPFReport: Sendable {
     let text: String
 }
 
-/// Armazenamento de resultados — espelha `temp_primos` e `Downloads/PrimeProFast` do Android.
+/// Prepara relatórios e arquivos temporários para visualização ou exportação.
 enum PPFResultFiles {
     static let tempSubfolder = "temp_primos"
-    static let permanentFolderName = "PrimeProFast"
 
     static func timestamp() -> String {
         let f = DateFormatter()
@@ -23,19 +22,6 @@ enum PPFResultFiles {
     static func tempDirectory() throws -> URL {
         let base = FileManager.default.temporaryDirectory
         let dir = base.appendingPathComponent(tempSubfolder, isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    /// Equivalente a `getPrimeProFastDirectory()` — pasta persistente visível no app Arquivos.
-    static func permanentDirectory() throws -> URL {
-        let docs = try FileManager.default.url(
-            for: .documentDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let dir = docs.appendingPathComponent(permanentFolderName, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
@@ -242,10 +228,11 @@ enum PPFResultFiles {
         return try writeText(finalContent, to: url)
     }
 
-    /// Botão “Calcular e Salvar em TXT” — `primos_{n}_{timestamp}.txt` permanente.
-    static func writeIntervalPermanentFile(_ content: String, n: Int64) throws -> URL {
+    static func writeIntervalTextExport(_ content: String, n: Int64) throws -> URL {
         let name = "primos_\(n)_\(timestamp()).txt"
-        let url = try permanentDirectory().appendingPathComponent(name)
+        let directory = try tempDirectory().appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(name)
         return try writeText(content, to: url)
     }
 

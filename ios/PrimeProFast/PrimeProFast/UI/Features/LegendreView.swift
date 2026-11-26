@@ -12,7 +12,13 @@ struct LegendreView: View {
     @State private var mode: Mode = .single
     @State private var continuousSearch: PPFNative.Cancellation?
     @State private var presentContinuousReport = false
+    @AppStorage("legendre_next_n") private var resumeAt = 0
+    @AppStorage("legendre_next_decimal") private var savedDecimal = ""
     @EnvironmentObject private var appState: AppState
+
+    private var checkpoint: String {
+        savedDecimal.isEmpty && resumeAt > 0 ? String(resumeAt) : savedDecimal
+    }
 
     var body: some View {
         FeatureScaffold(
@@ -48,6 +54,13 @@ struct LegendreView: View {
             if let continuousSearch {
                 Button("Parar e ver resultado") { continuousSearch.request() }
                     .buttonStyle(.bordered)
+            } else if mode == .continuous && !checkpoint.isEmpty {
+                Button("Continuar busca salva") {
+                    let checkpoint = self.checkpoint
+                    Task { await searchContinuously(result: result, loading: loading, resume: checkpoint) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(loading.wrappedValue)
             }
         }
         .onDisappear {
@@ -57,30 +70,21 @@ struct LegendreView: View {
     }
 
     private func verificar(result: Binding<String>, loading: Binding<Bool>) async {
+        guard !loading.wrappedValue else { return }
         let firstInput = x
         let lastInput = mode == .range ? final : x
         loading.wrappedValue = true
         let texto: String? = await PPFNative.run {
-            guard let first = PPFNative.evaluateInteger(firstInput).flatMap({ Int($0) }),
-                  let last = PPFNative.evaluateInteger(lastInput).flatMap({ Int($0) }),
-                  (1...1_000_000).contains(first), (first...1_000_000).contains(last),
-                  last - first < 100, (last - first + 1) * (2 * last + 1) <= 5_000_000 else {
+            guard let first = PPFNative.evaluateInteger(firstInput),
+                  let last = PPFNative.evaluateInteger(lastInput) else {
                 return nil
             }
-            var sections = ["CONJECTURA DE LEGENDRE"]
-            for n in first...last {
-                let low = n * n
-                let high = (n + 1) * (n + 1)
-                let primes = ((low + 1)..<high).filter(PPFMath.isPrime)
-                sections.append("n = \(n) | Intervalo (\(low), \(high))\nPrimos encontrados: \(primes.count)\n" +
-                                primes.map(String.init).joined(separator: ", "))
-            }
-            return sections.joined(separator: "\n\n")
+            return PPFNative.legendreReport(first: first, last: last)
         }
         await MainActor.run {
             loading.wrappedValue = false
             guard let texto else {
-                result.wrappedValue = "Use valores de n entre 1 e 1.000.000. Para faixas, informe até 100 valores e reduza a faixa se ela for muito grande."
+                result.wrappedValue = "Use valores positivos de até 10.000 dígitos, com n final maior ou igual ao inicial."
                 return
             }
             appState.saveTemporaryResultAndOpenViewer(
@@ -92,7 +96,7 @@ struct LegendreView: View {
     }
 
     @MainActor
-    private func searchContinuously(result: Binding<String>, loading: Binding<Bool>) async {
+    private func searchContinuously(result: Binding<String>, loading: Binding<Bool>, resume: String? = nil) async {
         guard !loading.wrappedValue else { return }
         let input = x
         let token = PPFNative.Cancellation()
@@ -104,49 +108,68 @@ struct LegendreView: View {
             continuousSearch = nil
             loading.wrappedValue = false
         }
-        guard let start = await PPFNative.run({ PPFNative.evaluateInteger(input).flatMap { Int($0) } }),
-              (1...1_000_000).contains(start) else {
-            result.wrappedValue = "Informe um valor inicial de n entre 1 e 1.000.000."
+        let initial = await PPFNative.run { resume ?? PPFNative.evaluateInteger(input) }
+        guard let start = initial, start != "0", !start.hasPrefix("-"),
+              start.utf8.count <= Int(PPF_LEGENDRE_MAX_DIGITS) else {
+            result.wrappedValue = "Informe um n positivo com até 10.000 dígitos."
             return
         }
 
         var next = start
-        var lastWitness: Int?
-        var missing: Int?
-        while next <= 1_000_000 && !token.isRequested && missing == nil {
+        var checked = 0
+        var lastWitness = ""
+        var inconclusive = false
+        var lastUpdate = ProcessInfo.processInfo.systemUptime
+        savedDecimal = start
+        resumeAt = 0
+        while !next.isEmpty && !token.isRequested && !inconclusive {
             let first = next
-            let end = min(1_000_000, first + 1999)
             let batch = await Task.detached {
                 var n = first
-                var latest: Int?
-                while n <= end && !token.isRequested {
-                    let lower = n * n
-                    let upper = (n + 1) * (n + 1)
-                    var candidate = lower + 1
-                    while candidate < upper && !PPFMath.isPrime(candidate) {
-                        candidate += 1
-                        if token.isRequested { return (n, latest, nil as Int?) }
+                var latest = ""
+                var examined = 0
+                let count = first.utf8.count <= 10 ? 100 : 1
+                for _ in 0..<count where !token.isRequested {
+                    let witness = PPFNative.legendreWitness(n)
+                    if witness.isEmpty {
+                        return (n, latest, examined, !token.isRequested)
                     }
-                    if candidate == upper { return (n, latest, Optional(n)) }
-                    latest = candidate
-                    n += 1
+                    latest = witness
+                    examined += 1
+                    guard let following = PPFNative.evaluateInteger(n + "+1"),
+                          following.utf8.count <= Int(PPF_LEGENDRE_MAX_DIGITS) else {
+                        return ("", latest, examined, false)
+                    }
+                    n = following
                 }
-                return (n, latest, nil as Int?)
+                return (n, latest, examined, false)
             }.value
             next = batch.0
-            lastWitness = batch.1 ?? lastWitness
-            missing = batch.2
-            result.wrappedValue = "Intervalos verificados: \((next - start).formatted())"
+            if !batch.1.isEmpty { lastWitness = batch.1 }
+            checked += batch.2
+            inconclusive = batch.3
+            let uptime = ProcessInfo.processInfo.systemUptime
+            if uptime - lastUpdate >= 1 {
+                lastUpdate = uptime
+                savedDecimal = next
+                result.wrappedValue = "Intervalos com candidato: \(checked.formatted())"
+            }
         }
+        savedDecimal = next
 
+        let outcome: String
+        if inconclusive {
+            outcome = "Busca inconclusiva para n = \(next). A ausência de candidato não refuta a conjectura."
+        } else {
+            outcome = token.isRequested ? "Busca interrompida." : "Limite de n atingido."
+        }
         let report = """
-        CONJECTURA DE LEGENDRE — BUSCA CONTÍNUA
+        CONJECTURA DE LEGENDRE - BUSCA CONTÍNUA
 
-        n inicial: \(start.formatted())
-        Intervalos com pelo menos um primo: \((next - start).formatted())
-        Último primo encontrado: \(lastWitness?.formatted() ?? "—")
-        \(missing.map { "Nenhum primo encontrado no intervalo para n = \($0)." }
-          ?? (token.isRequested ? "Busca interrompida." : "Limite de n atingido."))
+        n inicial: \(start)
+        Intervalos com primo ou provável primo: \(checked.formatted())
+        Último candidato: \(lastWitness.isEmpty ? "nenhum" : lastWitness)
+        \(outcome)
         """
         if presentContinuousReport {
             appState.saveTemporaryResultAndOpenViewer(report, prefix: "conjectura_legendre_continua", statusMessage: result)

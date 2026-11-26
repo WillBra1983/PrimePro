@@ -18,7 +18,7 @@ struct StatisticsView: View {
             .buttonStyle(.borderedProminent)
             .disabled(loading.wrappedValue)
             Button("Aproximação logarítmica") {
-                approximation(result: result)
+                Task { await approximation(result: result, loading: loading) }
             }
             .buttonStyle(.bordered)
             .disabled(loading.wrappedValue)
@@ -31,55 +31,41 @@ struct StatisticsView: View {
     }
 
     private func distribution(result: Binding<String>, loading: Binding<Bool>) async {
-        guard let n = Int(input), (2...10_000_000).contains(n) else {
-            result.wrappedValue = "Para a contagem exata, use um inteiro entre 2 e 10.000.000."
+        guard !loading.wrappedValue else { return }
+        guard let n = Int(input.trimmingCharacters(in: .whitespacesAndNewlines)),
+              (2...Int(ppf_exact_stats_max())).contains(n) else {
+            result.wrappedValue = "Para a contagem exata, use um inteiro entre 2 e 10 bilhões."
             return
         }
         loading.wrappedValue = true
-        let report = await Task.detached {
-            let start = Date()
-            let primes = PPFMath.primesUpTo(n)
-            var largestGap = 0
-            var twinPairs = 0
-            for (previous, next) in zip(primes, primes.dropFirst()) {
-                let gap = next - previous
-                largestGap = max(largestGap, gap)
-                if gap == 2 { twinPairs += 1 }
-            }
-            return """
-            Limite: \(n.formatted())
-            Primos encontrados: \(primes.count.formatted())
-            Maior primo: \(primes.last?.formatted() ?? "—")
-            Densidade: \((Double(primes.count) / Double(n)).formatted(.percent.precision(.fractionLength(3))))
-            Maior distância entre primos consecutivos: \(largestGap.formatted())
-            Pares de primos gêmeos: \(twinPairs.formatted())
-            Tempo: \(Date().timeIntervalSince(start).formatted(.number.precision(.fractionLength(3)))) s
-            """
-        }.value
+        let report = await PPFNative.run { PPFNative.primeStats(limit: n) }
         loading.wrappedValue = false
+        guard !report.isEmpty else {
+            result.wrappedValue = "Não foi possível calcular as estatísticas."
+            return
+        }
         appState.saveTemporaryResultAndOpenViewer(report, prefix: "estatisticas_primos_completas", statusMessage: result)
     }
 
-    private func approximation(result: Binding<String>) {
-        guard let n = Double(input), n.isFinite, (2...1e100).contains(n) else {
-            result.wrappedValue = "Para a estimativa, use um número entre 2 e 10^100 (ex.: 1e100)."
+    private func approximation(result: Binding<String>, loading: Binding<Bool>) async {
+        guard !loading.wrappedValue else { return }
+        let expression = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        loading.wrappedValue = true
+        let report: String? = await PPFNative.run {
+            guard let decimal = PPFNative.evaluateInteger(expression), !decimal.hasPrefix("-"),
+                  decimal != "0", decimal != "1",
+                  decimal.utf8.count <= Int(PPF_APPROXIMATION_MAX_DIGITS) else { return nil }
+            return PPFNative.primeApproximation(limit: decimal)
+        }
+        loading.wrappedValue = false
+        guard let report else {
+            result.wrappedValue = "Use um inteiro a partir de 2, com até 100.000 dígitos (ex.: 10^500)."
             return
         }
-        let steps = 2048
-        let start = log(2.0)
-        let step = (log(n) - start) / Double(steps)
-        var sum = 0.0
-        // Integrate exp(u)/u after substituting u = log(t).
-        for i in 0...steps {
-            let u = start + Double(i) * step
-            let weight = i == 0 || i == steps ? 1.0 : (i.isMultiple(of: 2) ? 2.0 : 4.0)
-            sum += weight * exp(u) / u
+        guard !report.isEmpty else {
+            result.wrappedValue = "Não foi possível calcular a aproximação."
+            return
         }
-        let report = """
-        N = \(n)
-        Estimativa N / ln(N): \(n / log(n))
-        Integral de 2 até N de 1 / ln(t): \(sum * step / 3)
-        """
         appState.saveTemporaryResultAndOpenViewer(report, prefix: "aproximacao_logaritmica", statusMessage: result)
     }
 

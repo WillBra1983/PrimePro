@@ -4,6 +4,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.content.ContentValues;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.provider.MediaStore;
 import android.widget.*;
 import android.util.Log;
@@ -12,6 +14,7 @@ import android.view.ViewGroup;
 import android.view.Gravity;
 import android.view.WindowManager;
 import android.view.MotionEvent;
+import android.webkit.WebView;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -26,6 +29,8 @@ import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.Manifest;
@@ -60,15 +65,20 @@ import java.util.HashSet;
 import android.content.SharedPreferences;
 import com.android.billingclient.api.Purchase;
 import java.nio.charset.StandardCharsets;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
+    private static final String STATE_PDF_TO_SAVE = "ppf_pdf_to_save";
+    private String pdfToSave;
+    private final ActivityResultLauncher<String> savePdfDocument = registerForActivityResult(
+        new ActivityResultContracts.CreateDocument("application/pdf"), this::salvarPdfNoDestino);
     private static final int PERMISSION_REQUEST_CODE = 123;
-    /**
-     * Acima deste valor usa C++/GMP. BigInteger.probablePrime em ~8193+ bits no heap Java costuma
-     * matar o processo (OOM); por isso 8193 deve usar nativo, não Java.
-     */
+    /** Acima deste valor o card pede confirmação e o RSA troca BigInteger por C++/GMP. */
     private static final int LIMIAR_BITS_ROTA_NATIVA = 8192;
+    private static final String SPECIAL_FERMAT_LABEL = "Primos de Fermat (2^(2^n)+1)";
     private static final int LIGHT_BG_TOP = Color.rgb(246, 248, 251);
     private static final int LIGHT_BG_BOTTOM = Color.rgb(232, 239, 247);
     private static final int LIGHT_SURFACE = Color.rgb(255, 255, 255);
@@ -118,6 +128,19 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_PM_HINT = "hint";
     private static final String KEY_PM_SHIELD = "shield";
     private static final String KEY_PM_COMBO_MULT = "combo_mult";
+    // Index maps to the PPF_MATCH_* power identifiers in the shared engine.
+    private static final String[] PRIME_MATCH_POWER_KEYS = {
+        KEY_PM_HAMMER, KEY_PM_PLUS_1, KEY_PM_PLUS_2, KEY_PM_PLUS_3, KEY_PM_RESHUFFLE,
+        KEY_PM_FREE_SWAP, KEY_PM_COLOR_COPY, KEY_PM_POLISH_UP, KEY_PM_POLISH_DOWN,
+        KEY_PM_ROW_RAY, KEY_PM_COL_RAY, KEY_PM_HINT, KEY_PM_COMBO_MULT
+    };
+    private static final String[] PRIME_MATCH_POWER_LABELS = {
+        "Martelo", "+1", "+2", "+3", "Reorganizar", "Troca livre", "Coringa", "Lapidar +1",
+        "Lapidar -1", "Raio linha", "Raio coluna", "Dica prima", "Combo x2"
+    };
+    private static final int PRIME_MATCH_HISTORY_MAX = 50;
+    private static final long PRIME_MATCH_PREVIEW_MS = 2000L;
+    private static final int PRIME_MATCH_VALUE_TICKETS = 10857600;
     private static final String KEY_PM_WINS = "wins";
     private static final String KEY_PM_BEST_SCORE = "best_score";
     private static final String KEY_PM_SOUND_ENABLED = "sound_enabled";
@@ -128,6 +151,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_PRIME_SHOOTER = "prime_shooter";
     private static final String KEY_PS_BEST_SCORE = "best_score";
     private static final String KEY_PS_LAST_SCORE = "last_score";
+    private static final String KEY_PS_LIVES = "remaining_lives";
+    private static final String KEY_PS_SHIELD_MS = "remaining_shield_ms";
 
     /**
      * Destino do pedido de “entrega por e-mail” de primos &gt;8192 bits (após compra in-app na Play).
@@ -152,6 +177,8 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout contentContainer;
     /** Layout raiz (gradiente de fundo). */
     private LinearLayout rootMainLayout;
+    private LinearLayout appHeader;
+    private LinearLayout arcadeHost;
     private Button btnTema;
     private final SecureRandom primeMatchRandom = new SecureRandom();
     private int[][] primeMatchValues;
@@ -234,22 +261,18 @@ public class MainActivity extends AppCompatActivity {
     private PrimeShooterView primeShooterView;
 
     private static class PrimeMatchGrupo {
+        final long mascara;
         final boolean[][] marcadas;
         final int soma;
         final int removidas;
-        final int cor;
         final int pretas;
-        final int ancoraPreta;
-        final int valorPreta;
 
-        PrimeMatchGrupo(boolean[][] marcadas, int soma, int removidas, int cor, int pretas, int ancoraPreta, int valorPreta) {
+        PrimeMatchGrupo(long mascara, boolean[][] marcadas, int soma, int removidas, int pretas) {
+            this.mascara = mascara;
             this.marcadas = marcadas;
             this.soma = soma;
             this.removidas = removidas;
-            this.cor = cor;
             this.pretas = pretas;
-            this.ancoraPreta = ancoraPreta;
-            this.valorPreta = valorPreta;
         }
     }
 
@@ -258,6 +281,7 @@ public class MainActivity extends AppCompatActivity {
         final boolean[][] explosaoMarcada;
         final int somaCalculada;
         final int somaFinal;
+        final int valorPreta;
         final int saldo;
         final int ancora;
         final boolean primo;
@@ -272,6 +296,7 @@ public class MainActivity extends AppCompatActivity {
                 boolean[][] explosaoMarcada,
                 int somaCalculada,
                 int somaFinal,
+                int valorPreta,
                 int saldo,
                 int ancora,
                 boolean primo,
@@ -285,6 +310,7 @@ public class MainActivity extends AppCompatActivity {
             this.explosaoMarcada = explosaoMarcada;
             this.somaCalculada = somaCalculada;
             this.somaFinal = somaFinal;
+            this.valorPreta = valorPreta;
             this.saldo = saldo;
             this.ancora = ancora;
             this.primo = primo;
@@ -298,9 +324,11 @@ public class MainActivity extends AppCompatActivity {
 
     // Variável para controle de parada do usuário
     private volatile boolean paradaUsuario = false;
+    private final AtomicBoolean legendreEmAndamento = new AtomicBoolean(false);
 
     // Controle genérico de cancelamento da operação atual (cards longos)
     private final AtomicBoolean cancelarOperacaoAtual = new AtomicBoolean(false);
+    private final AtomicBoolean geracaoAleatoriaAtiva = new AtomicBoolean(false);
     private Button btnCancelarOperacaoAtual;
 
     // Botão para parar busca sequencial
@@ -340,10 +368,50 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public native String calcularPrimos(long n);
+    private static native String specialPrimesNativo(int family, long limit, int count);
+    private static native String shortPrimesNativo(int bits, int count);
+    private static native int shortPrimeCountNativo(int bits);
+    private static native long nextPrimeBetweenNativo(long lower, long upper);
+    private static native boolean ehPrimo64Nativo(long bits);
+    private static native String legendreReportNativo(String first, String last);
+    private static native String legendreWitnessNativo(String n);
+    private static native String primeStatsNativo(long limit);
+    private static native String primeApproximationNativo(String limit);
+    private static native String mersenneReportNativo(int exponent, boolean list);
+    private static native String factorReportNativo(String number);
+    private static native String evaluateIntegerNativo(String expression);
+    private static native String perfectReportNativo(int mode, long value);
+    private static native String perfectVerifyNativo(String number);
+    private static native long[] scanOddPerfectNativo(long first, long last, int attempts);
+    private final AtomicBoolean buscaImparEmAndamento = new AtomicBoolean(false);
+    private final AtomicBoolean interromperBuscaImpar = new AtomicBoolean(false);
+    private static native int arcadePoints(int number, boolean prime, boolean capture);
+    private static native int arcadeAddScoreNativo(int score, int points);
+    private static native int arcadeStage(int score, boolean flight);
+    private static native int arcadeVehicle(int stage);
+    private static native int[] arcadeRulesNativo();
+    private static native int[] arcadeSpawnNativo(boolean flight, int score, int seed, int previous);
+    private static native double arcadeRunnerSpeedNativo(int score);
+    private static native double arcadeJumpHeightNativo(double seconds);
+    private static native boolean arcadeCollidesNativo(int first, double x1, double y1, int second, double x2, double y2);
+    private static native boolean arcadeRunnerPassedNativo(double x);
+    private static native int arcadeFlightContactNativo(boolean prime, boolean shield, boolean invulnerable);
+    private static native long[] matchGroupsNativo(int[] colors, long occupied);
+    private static native long[] matchResolveNativo(int[] values, long black, long group, long matched, long credited, long sum);
+    private static native int matchLevelTargetNativo(int level);
+    private static native int matchLevelMovesNativo(int level);
+    private static native int matchPercentNativo(int score, int target);
+    private static native int matchStarsNativo(int score, int target);
+    private static native int matchLevelPowersNativo(int level);
+    private static native int matchVictoryRewardsNativo(int wins);
+    private static native int matchDrawValueNativo(int ticket);
+    private static native boolean matchLocalPatternNativo(int[] values, int[] colors, int index, int value, int color);
+    private static native int matchPolishedValueNativo(int value, int color, int delta);
     public native String gerarPrimosGrandes(int bits, int quantidade, String nomeArquivo, boolean salvarArquivo);
     public native String superPrimosNativo(int bits, int quantidade, int threads, String caminhoArquivo);
     public native boolean testarPrimalidadeGiganteNativo(String numero, int repeticoes);
     public native void iniciarGeracaoPrimosGigantesJob(int bits, int quantidade, int threads, String caminhoArquivoSaida);
+    private native boolean iniciarPrimosAleatoriosJob(int bits, int quantidade, String caminhoArquivoSaida);
     public native String obterStatusGeracaoPrimosGigantesJob();
     public native boolean geracaoPrimosGigantesJobConcluido();
     public native String obterResultadoGeracaoPrimosGigantesJob();
@@ -475,7 +543,14 @@ public class MainActivity extends AppCompatActivity {
     private void atualizarCoresSistema() {
         getWindow().setStatusBarColor(corFundoTopo());
         getWindow().setNavigationBarColor(corFundoBase());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                int mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                        | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(temaEscuro ? 0 : mask, mask);
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             int flags = temaEscuro ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
@@ -570,7 +645,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /** Rótulo em negrito para campos de entrada (cards). */
-    private void adicionarRotuloCampo(String texto) {
+    private TextView adicionarRotuloCampo(String texto) {
         TextView tv = new TextView(this);
         tv.setText(texto);
         tv.setTextSize(14);
@@ -578,6 +653,7 @@ public class MainActivity extends AppCompatActivity {
         tv.setTextColor(corTextoPrincipal());
         tv.setPadding(dpUi(2), dpUi(12), dpUi(2), dpUi(5));
         contentContainer.addView(tv);
+        return tv;
     }
 
     /** Preenchimento dos campos de texto: cinza para não confundir com área branca do app. */
@@ -611,6 +687,33 @@ public class MainActivity extends AppCompatActivity {
         et.setOnClickListener(view -> {
             view.postDelayed(() -> rolarConteudoParaView(view), 250);
         });
+    }
+
+    private void aplicarMargensDoSistema(LinearLayout root) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return;
+        getWindow().setDecorFitsSystemWindows(false);
+        final int margem = dpUi(10);
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int types = android.view.WindowInsets.Type.systemBars()
+                    | android.view.WindowInsets.Type.displayCutout()
+                    | android.view.WindowInsets.Type.ime();
+            android.graphics.Insets area = insets.getInsets(types);
+            view.setPadding(margem + area.left, margem + area.top,
+                    margem + area.right, margem + area.bottom);
+            if (insets.isVisible(android.view.WindowInsets.Type.ime())) {
+                View focused = view.findFocus();
+                if (focused instanceof EditText) {
+                    focused.post(() -> {
+                        if (focused.hasFocus()) {
+                            focused.requestRectangleOnScreen(new android.graphics.Rect(
+                                    0, 0, focused.getWidth(), focused.getHeight()), false);
+                        }
+                    });
+                }
+            }
+            return insets;
+        });
+        root.requestApplyInsets();
     }
 
     /** Fundo principal com gradiente suave (base para efeito “vidro”). */
@@ -994,9 +1097,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        paradaUsuario = true;
+        interromperBuscaImpar.set(true);
+        if (arcadeHost != null && primeShooterView != null) primeShooterView.pausar();
+        if (arcadeHost != null && primeRunnerView != null) primeRunnerView.pausar();
+        super.onPause();
+    }
+
+    @Override
     public void onBackPressed() {
+        paradaUsuario = true;
+        if (arcadeHost != null) {
+            rootMainLayout.removeView(arcadeHost);
+            arcadeHost = null;
+            primeRunnerView = null;
+            primeShooterView = null;
+            appHeader.setVisibility(View.VISIBLE);
+            menuScrollView.setAlpha(1f);
+            menuScrollView.setVisibility(View.VISIBLE);
+            return;
+        }
         // Se estiver em uma tela de funcionalidade, voltar ao menu
         if (telaConteudoVisivel()) {
+            appHeader.setVisibility(View.VISIBLE);
             // Limpar o container de conteúdo
             contentContainer.removeAllViews();
 
@@ -1029,6 +1153,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            pdfToSave = savedInstanceState.getString(STATE_PDF_TO_SAVE);
+        }
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         // Verificações de segurança
@@ -1095,6 +1222,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Cabeçalho com título (barra “vidro” / gradiente)
         LinearLayout headerLayout = new LinearLayout(this);
+        appHeader = headerLayout;
         headerLayout.setOrientation(LinearLayout.HORIZONTAL);
         headerLayout.setGravity(Gravity.CENTER_VERTICAL);
         GradientDrawable headerBg = new GradientDrawable(
@@ -1217,6 +1345,7 @@ public class MainActivity extends AppCompatActivity {
         contentContainer.addView(scrollView);
 
         setContentView(rootMainLayout);
+        aplicarMargensDoSistema(rootMainLayout);
         aplicarFundoGradientePrincipal();
 
         // Criar menu com cards
@@ -1470,118 +1599,22 @@ public class MainActivity extends AppCompatActivity {
      * Um único guia por card: o que a função faz no app, como usar, e contexto pedagógico acessível.
      * Evita jargão de implementação e opções de “nível”.
      */
-    private String[][] gerarConteudoTutorialUnificado(String funcionalidade) {
-        switch (funcionalidade) {
-            case "Primos por Intervalo":
-                return new String[][]{
-                    {"O que este card faz",
-                        "<p>Você escolhe um <strong>limite máximo N</strong> e o aplicativo <strong>lista todos os números primos de 2 até N</strong> (ou o intervalo indicado na tela, conforme a opção disponível).</p>" +
-                        "<div class='exemplo'><strong>Em outras palavras:</strong> é uma forma rápida de ver “quais são os primos até aqui”, útil para estudo, conferência de listas ou curiosidade.</div>"},
-                    {"Como usar",
-                        "<p>Digite o valor limite (ou intervalo, se a tela pedir início e fim), confirme e aguarde o resultado. Números muito grandes podem demorar mais ou exigir limites por segurança.</p>" +
-                        "<ul><li>Use valores moderados primeiro para se familiarizar com o ritmo do app.</li><li>O resultado costuma poder ser guardado ou partilhado como nos outros cards.</li></ul>"},
-                    {"Um pouco de contexto (sem “aula longa”)",
-                        "<p>Há séculos se usa a ideia de <strong>marcar múltiplos</strong> de primos pequenos para achar primos num intervalo — o famoso <strong>crivo de Eratóstenes</strong> na escola. O importante aqui: <strong>este card é a ferramenta prática</strong> que faz esse trabalho pesado por você.</p>" +
-                        "<p>Quanto maior N, mais números existem para analisar; por isso o app pode avisar limites ou tempo de espera.</p>"}
-                };
-            case "Primos Especiais":
-                return new String[][]{
-                    {"O que este card faz",
-                        "<p>Aqui você <strong>não lista todos os primos até N</strong>, mas sim pede exemplos de <strong>famílias famosas</strong>: gêmeos (p e p+2), Sophie Germain, primos “cousins”, sexy, palíndromos, Fermat, etc.</p>" +
-                        "<div class='exemplo'><strong>Objetivo:</strong> explorar padrões e nomes que a teoria dos números deu a certos primos que se comportam de modo especial.</div>"},
-                    {"Como usar",
-                        "<p>Escolha o <strong>tipo</strong> no menu, informe <strong>quantos exemplos</strong> quer e, se pedido, até onde buscar. O app gera uma lista que você pode ler e comparar com o que estudou.</p>"},
-                    {"Por que isso interessa",
-                        "<p>Muitas conjecturas abertas da matemática falam justamente dessas famílias (por exemplo, se existem infinitos primos gêmeos). Ver exemplos concretos ajuda a entender <strong>o que cada definição significa</strong>, sem precisar calcular à mão.</p>"}
-                };
-            case "Primos Aleatórios":
-                return new String[][]{
-                    {"O que este card faz",
-                        "<p>Você define <strong>quantos primos</strong> quer e <strong>de qual tamanho em bits</strong> (ordem de grandeza do número). O app <strong>procura candidatos aleatórios</strong> desse tamanho e <strong>confirma se são primos</strong>, até completar a quantidade pedida.</p>" +
-                        "<div class='exemplo'><strong>Diferença do “intervalo”:</strong> aqui não listamos todos até um limite; geramos poucos primos <em>muito grandes</em>, um por um.</div>"},
-                    {"Como usar",
-                        "<p>Preencha quantidade e bits conforme a tela. Comece com <strong>poucos bits</strong> para ver o fluxo; valores enormes podem levar tempo ou atingir limites do aparelho — isso é normal em qualquer ferramenta séria.</p>"},
-                    {"Por que primos “gigantes” importam",
-                        "<p>No dia a dia digital, chaves de <strong>HTTPS</strong>, aplicativos bancários e mensagens seguras dependem de números que, na prática, são produtos de <strong>primos enormes</strong>. Não é exagero: a “força” de muitos sistemas vem justamente de usar primos grandes e bem escolhidos.</p>" +
-                        "<p>Projetos coletivos (como buscas por <strong>primos de Mersenne</strong>) mostram também o lado humano: milhares de pessoas contribuem CPU para descobrir recordes — mistura de matemática, engenharia e curiosidade.</p>" +
-                        "<p>Este card coloca você no papel de <strong>pedir primos grandes de propósito</strong>, como fazem, em escala profissional, geradores de chaves criptográficas — sempre dentro do que o app permite em tempo e memória.</p>"}
-                };
-            case "Conjectura de Legendre":
-                return new String[][]{
-                    {"O que é a conjectura de Legendre",
-                        "<p><strong>Ideia central:</strong> para cada número natural <em>n</em>, deveria sempre existir pelo menos um primo entre <strong>n²</strong> e <strong>(n+1)²</strong>. É uma afirmação simples de enunciar e <strong>ainda não demonstrada</strong> em geral, embora tenha sido verificada para valores enormes com computador.</p>"},
-                    {"O que este card faz",
-                        "<p>O app <strong>testa a conjectura</strong> para o intervalo de <em>n</em> que você indicar: para cada <em>n</em>, verifica se há primo entre os quadrados consecutivos. O resultado mostra onde a conjectura “passa” ou onde encontrou falha (se alguma aparecer no intervalo testado).</p>" +
-                        "<div class='exemplo'>Use isto como <strong>exploração numérica</strong>, não como prova matemática do problema em todo o infinito.</div>"},
-                    {"Como interpretar",
-                        "<p>Se em todos os <em>n</em> testados apareceu pelo menos um primo no intervalo, você só viu evidência <strong>naquele trecho</strong>. A matemática continua aberta para uma demonstração geral ou um contra-exemplo teórico.</p>"}
-                };
-            case "Números de Mersenne":
-                return new String[][]{
-                    {"O que são números de Mersenne",
-                        "<p>Leva o nome do padre e estudioso <strong>Marin Mersenne</strong>. Um <strong>número de Mersenne</strong> tem a forma <strong>M(p) = 2<sup>p</sup> − 1</strong> (na definição clássica que você vê no card).</p>" +
-                        "<p>Quando esse número <em>também</em> é primo, chamamo-lo de <strong>primo de Mersenne</strong>. Nem todo <em>p</em> primo gera um Mersenne primo — há contra-exemplos clássicos nos livros.</p>"},
-                    {"O que este card faz",
-                        "<p>Você informa o <strong>expoente p</strong> (pode ser um número ou uma expressão que o app calcula). O app calcula <strong>2<sup>p</sup> − 1</strong>, diz se <em>p</em> é primo (condição necessária para Mersenne primo), testa se <strong>M(p)</strong> é primo e compara com uma <strong>lista de expoentes já conhecidos</strong> pela comunidade matemática.</p>"},
-                    {"Ligação com números perfeitos (ideia curta)",
-                        "<p>Um teorema clássico (Euclides/Euler) liga <strong>primos de Mersenne</strong> a <strong>números perfeitos pares</strong>. Se quiser a fundo, use também o card de Números Perfeitos; aqui basta saber que Mersenne não é só curiosidade: é peça de um quebra-cabeça histórico da teoria dos números.</p>"}
-                };
-            case "Números Perfeitos":
-                return new String[][]{
-                    {"O que é número perfeito",
-                        "<p>Um número é <strong>perfeito</strong> quando é igual à <strong>soma dos seus divisores próprios</strong> (todos os divisores positivos menores que ele). O exemplo clássico é <strong>6 = 1 + 2 + 3</strong>.</p>"},
-                    {"O que este card faz",
-                        "<p>Dependendo do modo que a tela oferece, você pode <strong>verificar um candidato</strong>, <strong>buscar exemplos</strong> com certo número de dígitos ou explorar modos educativos que o app descreve nos botões. O objetivo é <strong>ligar a definição</strong> a <strong>experimentos numéricos</strong>.</p>"},
-                    {"Contexto breve",
-                        "<p>Todos os perfeitos <strong>pares</strong> conhecidos seguem a forma ligada a <strong>primos de Mersenne</strong>; não se conhece hoje um perfeito <strong>ímpar</strong> — problema ainda em aberto. O card ajuda a sentir o tamanho e a raridade desses objetos.</p>"}
-                };
-            case "Segurança Digital":
-                return new String[][]{
-                    {"O que este card representa",
-                        "<p>É a área do app dedicada a <strong>ideias de criptografia</strong> usando números grandes: chaves públicas/privadas no estilo <strong>RSA</strong>, <strong>funções de resumo (hash)</strong> e <strong>assinatura digital</strong> em linguagem de exemplo — para <strong>aprender o fluxo</strong>, não para substituir um produto bancário.</p>"},
-                    {"Como usar com bom senso",
-                        "<p>Gerar chaves e ver mensagens “de exemplo” ajuda a ver <strong>por que primos grandes entram na história</strong>. Trate sempre como <strong>demonstração didática</strong>; chaves reais exigem software e normas específicas fora do escopo de um app educativo.</p>"},
-                    {"O que você leva daqui",
-                        "<p>Intuição sobre <strong>por que multiplicar dois primos é fácil</strong> e <strong>fatorar o produto é difícil</strong> quando os números são enormes — ideia central por trás de muita segurança na internet.</p>"}
-                };
-            case "Teste de Primalidade":
-                return new String[][]{
-                    {"O que este card faz",
-                        "<p>Você digita um <strong>número inteiro</strong> ou uma <strong>expressão</strong> (por exemplo, somas, produtos, potências com ^) e o app <strong>calcula o valor</strong> e responde se é <strong>primo ou composto</strong>, com fatoração quando isso é viável para o tamanho do número.</p>" +
-                        "<div class='exemplo'><strong>Primo:</strong> só divide por 1 e por si. <strong>Composto:</strong> tem outros divisores. O 1 é tratado como caso especial na matemática escolar.</div>"},
-                    {"Como usar bem",
-                        "<p>Use a caixa de texto para números grandes ou expressões; leia o relatório com calma — ele mostra o valor analisado, quantos dígitos tem e o veredito. Números com <strong>muitíssimos dígitos</strong> podem limitar o detalhe da fatoração; o teste de composto/primo continua o foco.</p>"},
-                    {"Por que isso é útil",
-                        "<p>É o “<strong>multímetro</strong>” do app: antes de explorar Mersenne, RSA de brinquedo ou estatísticas, você confirma <strong>o status de um inteiro concreto</strong>. Ajuda também a validar contas de exercícios e a construir intuição sobre o quão rápido cresce a dificuldade quando o número aumenta.</p>"}
-                };
-            case "Estatísticas":
-                return new String[][]{
-                    {"O que este card faz",
-                        "<p>Concentra-se em <strong>visão geral</strong>: quantos primos existem até um certo limite, <strong>densidade</strong>, comparações com aproximações clássicas (como a ideia de que “aos poucos os primos ficam mais raros” em proporção), e outras métricas que a tela listar.</p>" +
-                        "<div class='exemplo'>Pense em um <strong>painel de resumo</strong> da “floresta” dos primos, não em achar um primo específico.</div>"},
-                    {"Como usar",
-                        "<p>Informe o limite ou parâmetros pedidos e interprete os números como <strong>tendências</strong>. Suba o limite gradualmente para ver como tempo de cálculo e memória reagem.</p>"},
-                    {"O que aprender com isso",
-                        "<p>A distribuição dos primos foi um dos grandes temas dos últimos séculos; ver <strong>contagens reais</strong> ajuda a conectar o que os livros chamam de teorema dos números primos ou função π(n) com <strong>dados que você mesmo gerou</strong> no aparelho.</p>"}
-                };
-            case "Jogo dos Primos":
-                return new String[][]{
-                    {"Ideia do jogo",
-                        "<p>O jogo mistura tabuleiro casual com teoria dos números: você combina bolinhas da mesma cor, soma os valores e tenta formar <strong>números primos</strong>. Somas primas viram peças acumuladas; somas compostas apenas explodem e abrem espaço.</p>"},
-                    {"Como a fase funciona",
-                        "<p>Cada fase tem uma meta alta de valor acumulado e um número limitado de jogadas. O desempenho final vira estrelas: 0 a 32% não gera estrela, 33% a 65% gera uma, 66% a 99% gera duas e 100% gera três.</p>"},
-                    {"Poderes acumulados",
-                        "<p>Ao vencer fases, você guarda ferramentas especiais. Nem todas aparecem ao mesmo tempo: cada fase mostra uma linha pequena de poderes ativos abaixo do tabuleiro, variando conforme o avanço.</p>"},
-                    {"O que treina",
-                        "<p>Além de diversão, o jogo cria intuição sobre paridade, divisibilidade, compostos óbvios e primos pequenos, sem transformar a experiência em uma aula formal.</p>"}
-                };
-            default:
-                return new String[][]{
-                    {"Sobre este card",
-                        "<p>Este tutorial genérico cobre a função <strong>" + funcionalidade + "</strong>. Abra o card na tela principal e leia os rótulos dos campos: eles dizem o que informar e o que será calculado.</p>"},
-                    {"Dica",
-                        "<p>Se algo falhar, verifique se os valores são inteiros válidos e se não ultrapassam limites exibidos em mensagens do app. Use valores pequenos primeiro.</p>"}
-                };
+    private String[][] gerarConteudoTutorialUnificado(String funcionalidade) throws IOException, JSONException {
+        try (java.io.InputStream stream = getAssets().open("primeprofast-tutorials.json");
+             java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            for (int count; (count = stream.read(buffer)) != -1;) {
+                data.write(buffer, 0, count);
+            }
+            JSONArray sections = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8))
+                .getJSONArray(funcionalidade);
+            String[][] result = new String[sections.length()][2];
+            for (int index = 0; index < result.length; index++) {
+                JSONArray section = sections.getJSONArray(index);
+                result[index][0] = section.getString(0);
+                result[index][1] = section.getString(1);
+            }
+            return result;
         }
     }
 
@@ -2069,7 +2102,6 @@ public class MainActivity extends AppCompatActivity {
         html.append("        <section class='panel'>\n");
         html.append("            <div class='panel-head'>\n");
         html.append("                <div class='panel-title'>Resultado completo</div>\n");
-        html.append("                <button type='button' onclick='copyResult()'>Copiar resultado</button>\n");
         html.append("            </div>\n");
         html.append("            <pre id='raw'>").append(resultadoSeguro).append("</pre>\n");
         html.append("        </section>\n");
@@ -2082,7 +2114,6 @@ public class MainActivity extends AppCompatActivity {
         html.append("            const scrollPercent = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 100;\n");
         html.append("            document.getElementById('progress').style.width = scrollPercent + '%';\n");
         html.append("        });\n");
-        html.append("        function copyResult() { const text = document.getElementById('raw').innerText; if (navigator.clipboard) { navigator.clipboard.writeText(text); } }\n");
         html.append("    </script>\n");
         html.append("</body>\n");
         html.append("</html>");
@@ -2107,6 +2138,7 @@ public class MainActivity extends AppCompatActivity {
             return "Resultado";
         }
         if (prefixo.contains("primos_aleatorios")) return "Primos Aleatórios";
+        if (prefixo.contains("primos_especiais")) return "Primos Especiais";
         if (prefixo.contains("conjectura_legendre")) return "Conjectura de Legendre";
         if (prefixo.contains("mersenne")) return "Números de Mersenne";
         if (prefixo.contains("perfeitos")) return "Números Perfeitos";
@@ -2264,6 +2296,10 @@ public class MainActivity extends AppCompatActivity {
 
 
     private void abrirFuncao(String funcao) {
+        if ("Corrida Prima".equals(funcao) || "Resgate Espacial".equals(funcao)) {
+            abrirArcade("Resgate Espacial".equals(funcao));
+            return;
+        }
         // Definir card atual para controle de limitações
         currentCard = funcao;
         carregarCalculosCard();
@@ -2323,12 +2359,6 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case "Jogo dos Primos":
                 criarInterfaceJogoPrimos();
-                break;
-            case "Corrida Prima":
-                criarInterfaceCorridaPrima();
-                break;
-            case "Resgate Espacial":
-                criarInterfaceResgateEspacial();
                 break;
         }
         rolarConteudoParaInicio();
@@ -2408,36 +2438,11 @@ public class MainActivity extends AppCompatActivity {
                         registrarCalculo();
                         registrarCalculoCard();
 
-                        // Salvar em arquivo temporário e abrir com visualizador HTML (SISTEMA ORIGINAL)
-                        try {
-                            File tempDir = new File(getCacheDir(), "temp_primos");
-                            if (!tempDir.exists()) {
-                                tempDir.mkdirs();
-                            }
-
-                            String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-                            File tempFile = new File(tempDir, "primos_temp_" + timestamp + ".html");
-
-                            String htmlResultado = gerarHTMLResultado("Primos por Intervalo", resultado, "primos temp");
-                            try (OutputStream os = new java.io.FileOutputStream(tempFile)) {
-                                os.write(htmlResultado.getBytes(StandardCharsets.UTF_8));
-                            }
-
-                            Log.d(TAG, "Arquivo temporário criado: " + tempFile.getAbsolutePath());
-
-                            runOnUiThread(() -> {
-                                resultadoView.setText("Resultado gerado com sucesso! Abrindo visualizador...");
-                                scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_UP));
-
-                                // Abrir com visualizador HTML (SISTEMA ORIGINAL)
-                                openFileWithHtmlViewer(tempFile);
-                            });
-                        } catch (IOException e) {
-                            Log.e(TAG, "Erro ao salvar arquivo temporário", e);
-                            runOnUiThread(() -> {
-                                resultadoView.setText("Erro ao salvar arquivo temporário: " + e.getMessage());
-                            });
-                        }
+                        runOnUiThread(() -> {
+                            resultadoView.setText("Resultado gerado.");
+                            scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_UP));
+                        });
+                        salvarResultadoTemporario(resultado, "primos_intervalo");
                     } catch (Exception e) {
                         Log.e(TAG, "Erro ao calcular primos", e);
                         runOnUiThread(() -> {
@@ -2570,13 +2575,14 @@ public class MainActivity extends AppCompatActivity {
 
         // Spinner para seleção do tipo
         Spinner spinnerTipo = new Spinner(this);
+        // Indices follow the PPF_SPECIAL_* family identifiers in ppf_c_api.h.
         String[] tiposPrimos = {
             "Primos Gêmeos (p, p+2)",
             "Primos de Sophie Germain (p, 2p+1)",
             "Primos Cousins (p, p+4)",
             "Primos Sexy (p, p+6)",
             "Primos Palíndromos",
-            "Primos de Fermat (2^(2^n)+1)"
+            SPECIAL_FERMAT_LABEL
         };
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, tiposPrimos);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -2592,7 +2598,7 @@ public class MainActivity extends AppCompatActivity {
         estilizarCampoEntrada(inputQuantidade);
         contentContainer.addView(inputQuantidade);
 
-        adicionarRotuloCampo("Limite superior da busca");
+        TextView rotuloLimite = adicionarRotuloCampo("Limite superior da busca");
         EditText inputLimite = new EditText(this);
         inputLimite.setHint("Digite aqui (ex.: 10000)");
         inputLimite.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
@@ -2610,31 +2616,49 @@ public class MainActivity extends AppCompatActivity {
             try {
                 String tipoSelecionado = (String) spinnerTipo.getSelectedItem();
                 int quantidade = Integer.parseInt(inputQuantidade.getText().toString());
-                long limite = Long.parseLong(inputLimite.getText().toString());
+                boolean fermat = SPECIAL_FERMAT_LABEL.equals(tipoSelecionado);
+                long limite = fermat ? 0 : Long.parseLong(inputLimite.getText().toString());
 
                 if (quantidade <= 0) {
                     Toast.makeText(this, "Digite uma quantidade válida", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                if (limite <= 0) {
+                if (!fermat && limite < 2) {
                     Toast.makeText(this, "Digite um limite válido", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (!fermat && quantidade > 10000) {
+                    Toast.makeText(this, "Informe até 10.000 resultados.", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
                 // Verificar limites de monetização
-                if (!podeRealizarCalculo(limite)) {
+                if (!fermat && !podeRealizarCalculo(limite)) {
                     mostrarDialogoLimiteAtingido(limite);
                     return;
                 }
 
-                gerarPrimosEspeciais(tipoSelecionado, quantidade, limite);
+                gerarPrimosEspeciais(spinnerTipo.getSelectedItemPosition(), tipoSelecionado, quantidade, limite);
 
             } catch (NumberFormatException e) {
                 Toast.makeText(this, "Digite números válidos", Toast.LENGTH_SHORT).show();
             }
         });
         contentContainer.addView(btnGerar);
+
+        spinnerTipo.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                boolean fermat = SPECIAL_FERMAT_LABEL.equals(parent.getItemAtPosition(position));
+                rotuloLimite.setVisibility(fermat ? View.GONE : View.VISIBLE);
+                inputLimite.setVisibility(fermat ? View.GONE : View.VISIBLE);
+                btnGerar.setText(fermat ? "Listar primos conhecidos" : "Sortear primos especiais");
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
 
         // Área de resultado
         resultadoView = new TextView(this);
@@ -2649,62 +2673,23 @@ public class MainActivity extends AppCompatActivity {
     /**
      * Gera primos especiais baseado no tipo selecionado
      */
-    private void gerarPrimosEspeciais(String tipo, int quantidade, long limite) {
+    private void gerarPrimosEspeciais(int familia, String tipo, int quantidade, long limite) {
+        boolean fermat = SPECIAL_FERMAT_LABEL.equals(tipo);
         CronometroOperacaoHandle cronometroAtivo = iniciarCronometroOperacao(
             resultadoView,
             "Primos Especiais",
             "Tipo: " + tipo,
             "Quantidade: " + quantidade,
-            "Limite: " + String.format("%,d", limite)
+            fermat ? "Cinco primos de Fermat conhecidos" : "Limite: " + String.format("%,d", limite)
         );
 
                 new Thread(() -> {
                     try {
-                StringBuilder resultado = new StringBuilder();
-                resultado.append("⭐ ").append(tipo).append("\n");
-                resultado.append("Quantidade: ").append(quantidade).append("\n");
-                resultado.append("Limite: ").append(String.format("%,d", limite)).append("\n\n");
-
-                List<String> primosEspeciais = new ArrayList<>();
-
-                switch (tipo) {
-                    case "Primos Gêmeos (p, p+2)":
-                        primosEspeciais = gerarPrimosGemeos(quantidade, limite);
-                        break;
-                    case "Primos de Sophie Germain (p, 2p+1)":
-                        primosEspeciais = gerarPrimosSophieGermain(quantidade, limite);
-                        break;
-                    case "Primos Cousins (p, p+4)":
-                        primosEspeciais = gerarPrimosCousins(quantidade, limite);
-                        break;
-                    case "Primos Sexy (p, p+6)":
-                        primosEspeciais = gerarPrimosSexy(quantidade, limite);
-                        break;
-                    case "Primos Palíndromos":
-                        primosEspeciais = gerarPrimosPalindromos(quantidade, limite);
-                        break;
-                    case "Primos de Fermat (2^(2^n)+1)":
-                        primosEspeciais = gerarPrimosFermat(quantidade);
-                        break;
+                String relatorioComum = specialPrimesNativo(familia, limite, quantidade);
+                if (relatorioComum == null || relatorioComum.isEmpty()) {
+                    throw new IllegalStateException("Não foi possível preparar a busca.");
                 }
-
-                for (int i = 0; i < primosEspeciais.size(); i++) {
-                    resultado.append((i + 1)).append(". ").append(primosEspeciais.get(i)).append("\n");
-                }
-
-                if (primosEspeciais.isEmpty()) {
-                    resultado.append("Nenhum primo especial encontrado no limite especificado.\n");
-                    resultado.append("Tente aumentar o limite ou diminuir a quantidade.");
-                }
-
-                // Registrar cálculo realizado
-                registrarCalculo();
-
-                            runOnUiThread(() -> {
-                    pararCronometroOperacao(cronometroAtivo);
-                    resultadoView.setText(resultado.toString());
-                    resultadoView.setTextColor(0xFF333333);
-                });
+                publicarPrimosEspeciais(relatorioComum, cronometroAtivo);
 
                     } catch (Exception e) {
                         runOnUiThread(() -> {
@@ -2716,266 +2701,18 @@ public class MainActivity extends AppCompatActivity {
                 }).start();
     }
 
-    /**
-     * Gera primos gêmeos aleatórios (p, p+2)
-     */
-    private List<String> gerarPrimosGemeos(int quantidade, long limite) {
-        List<String> primosGemeos = new ArrayList<>();
-        Set<String> primosJaGerados = new HashSet<>(); // Evitar duplicatas
-        int tentativas = 0;
-        int maxTentativas = quantidade * 50; // Limite de tentativas
-
-        while (primosGemeos.size() < quantidade && tentativas < maxTentativas) {
-            // Gerar primo aleatório entre 3 e limite-2
-            long p = gerarPrimoAleatorio(3, limite - 2);
-
-            if (p != -1 && ehPrimo(p + 2)) {
-                String par = "(" + p + ", " + (p + 2) + ")";
-                if (!primosJaGerados.contains(par)) {
-                    primosGemeos.add(par);
-                    primosJaGerados.add(par);
-                }
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou suficientes aleatórios, completar sequencialmente
-        if (primosGemeos.size() < quantidade) {
-            for (long p = 3; p < limite - 2 && primosGemeos.size() < quantidade; p += 2) {
-                if (ehPrimo(p) && ehPrimo(p + 2)) {
-                    String par = "(" + p + ", " + (p + 2) + ")";
-                    if (!primosJaGerados.contains(par)) {
-                        primosGemeos.add(par);
-                        primosJaGerados.add(par);
-                    }
-                }
-            }
-        }
-
-        return primosGemeos;
+    private void publicarPrimosEspeciais(String resultado, CronometroOperacaoHandle cronometro) {
+        registrarCalculo();
+        runOnUiThread(() -> {
+            pararCronometroOperacao(cronometro);
+            resultadoView.setText(resultado);
+            resultadoView.setTextColor(corTextoPrincipal());
+            salvarResultadoTemporario(resultado, "primos_especiais");
+        });
     }
 
-    /**
-     * Gera primos de Sophie Germain aleatórios (p, 2p+1)
-     */
-    private List<String> gerarPrimosSophieGermain(int quantidade, long limite) {
-        List<String> primosSG = new ArrayList<>();
-        Set<String> primosJaGerados = new HashSet<>(); // Evitar duplicatas
-        int tentativas = 0;
-        int maxTentativas = quantidade * 50; // Limite de tentativas
-
-        while (primosSG.size() < quantidade && tentativas < maxTentativas) {
-            // Gerar primo aleatório entre 2 e limite
-            long p = gerarPrimoAleatorio(2, limite);
-
-            if (p != -1 && 2 * p + 1 <= limite && ehPrimo(2 * p + 1)) {
-                String primo = p + " (2×" + p + "+1 = " + (2 * p + 1) + ")";
-                if (!primosJaGerados.contains(primo)) {
-                    primosSG.add(primo);
-                    primosJaGerados.add(primo);
-                }
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou suficientes aleatórios, completar sequencialmente
-        if (primosSG.size() < quantidade) {
-            for (long p = 2; p < limite && primosSG.size() < quantidade; p++) {
-                if (ehPrimo(p) && 2 * p + 1 <= limite && ehPrimo(2 * p + 1)) {
-                    String primo = p + " (2×" + p + "+1 = " + (2 * p + 1) + ")";
-                    if (!primosJaGerados.contains(primo)) {
-                        primosSG.add(primo);
-                        primosJaGerados.add(primo);
-                    }
-                }
-            }
-        }
-
-        return primosSG;
-    }
-
-    /**
-     * Gera primos cousins aleatórios (p, p+4)
-     */
-    private List<String> gerarPrimosCousins(int quantidade, long limite) {
-        List<String> primosCousins = new ArrayList<>();
-        Set<String> primosJaGerados = new HashSet<>(); // Evitar duplicatas
-        int tentativas = 0;
-        int maxTentativas = quantidade * 50; // Limite de tentativas
-
-        while (primosCousins.size() < quantidade && tentativas < maxTentativas) {
-            // Gerar primo aleatório entre 3 e limite-4
-            long p = gerarPrimoAleatorio(3, limite - 4);
-
-            if (p != -1 && ehPrimo(p + 4)) {
-                String par = "(" + p + ", " + (p + 4) + ")";
-                if (!primosJaGerados.contains(par)) {
-                    primosCousins.add(par);
-                    primosJaGerados.add(par);
-                }
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou suficientes aleatórios, completar sequencialmente
-        if (primosCousins.size() < quantidade) {
-            for (long p = 3; p < limite - 4 && primosCousins.size() < quantidade; p += 2) {
-                if (ehPrimo(p) && ehPrimo(p + 4)) {
-                    String par = "(" + p + ", " + (p + 4) + ")";
-                    if (!primosJaGerados.contains(par)) {
-                        primosCousins.add(par);
-                        primosJaGerados.add(par);
-                    }
-                }
-            }
-        }
-
-        return primosCousins;
-    }
-
-    /**
-     * Gera primos sexy aleatórios (p, p+6)
-     */
-    private List<String> gerarPrimosSexy(int quantidade, long limite) {
-        List<String> primosSexy = new ArrayList<>();
-        Set<String> primosJaGerados = new HashSet<>(); // Evitar duplicatas
-        int tentativas = 0;
-        int maxTentativas = quantidade * 50; // Limite de tentativas
-
-        while (primosSexy.size() < quantidade && tentativas < maxTentativas) {
-            // Gerar primo aleatório entre 5 e limite-6
-            long p = gerarPrimoAleatorio(5, limite - 6);
-
-            if (p != -1 && ehPrimo(p + 6)) {
-                String par = "(" + p + ", " + (p + 6) + ")";
-                if (!primosJaGerados.contains(par)) {
-                    primosSexy.add(par);
-                    primosJaGerados.add(par);
-                }
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou suficientes aleatórios, completar sequencialmente
-        if (primosSexy.size() < quantidade) {
-            for (long p = 5; p < limite - 6 && primosSexy.size() < quantidade; p += 2) {
-                if (ehPrimo(p) && ehPrimo(p + 6)) {
-                    String par = "(" + p + ", " + (p + 6) + ")";
-                    if (!primosJaGerados.contains(par)) {
-                        primosSexy.add(par);
-                        primosJaGerados.add(par);
-                    }
-                }
-            }
-        }
-
-        return primosSexy;
-    }
-
-    /**
-     * Gera primos palíndromos aleatórios
-     */
-    private List<String> gerarPrimosPalindromos(int quantidade, long limite) {
-        List<String> primosPalindromos = new ArrayList<>();
-        Set<String> primosJaGerados = new HashSet<>(); // Evitar duplicatas
-        int tentativas = 0;
-        int maxTentativas = quantidade * 50; // Limite de tentativas
-
-        while (primosPalindromos.size() < quantidade && tentativas < maxTentativas) {
-            // Gerar primo aleatório entre 2 e limite
-            long p = gerarPrimoAleatorio(2, limite);
-
-            if (p != -1 && ehPalindromo(p)) {
-                String primo = String.valueOf(p);
-                if (!primosJaGerados.contains(primo)) {
-                    primosPalindromos.add(primo);
-                    primosJaGerados.add(primo);
-                }
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou suficientes aleatórios, completar sequencialmente
-        if (primosPalindromos.size() < quantidade) {
-            for (long p = 2; p < limite && primosPalindromos.size() < quantidade; p++) {
-                if (ehPrimo(p) && ehPalindromo(p)) {
-                    String primo = String.valueOf(p);
-                    if (!primosJaGerados.contains(primo)) {
-                        primosPalindromos.add(primo);
-                        primosJaGerados.add(primo);
-                    }
-                }
-            }
-        }
-
-        return primosPalindromos;
-    }
-
-    /**
-     * Gera primos de Fermat (2^(2^n)+1)
-     */
-    private List<String> gerarPrimosFermat(int quantidade) {
-        List<String> primosFermat = new ArrayList<>();
-        // Apenas F₀, F₁, F₂, F₃, F₄ são conhecidos
-        long[] fermat = {3, 5, 17, 257, 65537}; // F₀ a F₄
-        for (int i = 0; i < Math.min(quantidade, fermat.length); i++) {
-            primosFermat.add("F" + i + " = " + fermat[i]);
-        }
-        return primosFermat;
-    }
-
-    /**
-     * Verifica se um número é primo (única implementação: divisão 6k±1 com {@code long},
-     * evita overflow de {@code i*i} que ocorre com {@code int} perto de {@link Integer#MAX_VALUE}).
-     */
     private boolean ehPrimo(long n) {
-        if (n < 2) return false;
-        if (n == 2 || n == 3) return true;
-        if (n % 2 == 0 || n % 3 == 0) return false;
-        for (long i = 5; i * i <= n; i += 6) {
-            if (n % i == 0 || n % (i + 2) == 0) return false;
-        }
-        return true;
-    }
-
-    /**
-     * Verifica se um número é palíndromo
-     */
-    private boolean ehPalindromo(long n) {
-        String s = String.valueOf(n);
-        return s.equals(new StringBuilder(s).reverse().toString());
-    }
-
-    /**
-     * Gera um número aleatório entre min e max (inclusive)
-     */
-    private long gerarNumeroAleatorio(long min, long max) {
-        if (min >= max) return min;
-        return min + (long) (Math.random() * (max - min + 1));
-    }
-
-    /**
-     * Gera um número primo aleatório entre min e max
-     */
-    private long gerarPrimoAleatorio(long min, long max) {
-        int tentativas = 0;
-        int maxTentativas = 1000; // Evitar loop infinito
-
-        while (tentativas < maxTentativas) {
-            long candidato = gerarNumeroAleatorio(min, max);
-            if (ehPrimo(candidato)) {
-                return candidato;
-            }
-            tentativas++;
-        }
-
-        // Se não encontrou primo aleatório, busca sequencialmente
-        for (long p = min; p <= max; p++) {
-            if (ehPrimo(p)) {
-                return p;
-            }
-        }
-        return -1; // Não encontrou primo no intervalo
+        return n >= 2 && ehPrimo64Nativo(n);
     }
 
     // ========================================
@@ -3334,6 +3071,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 String quantidadeStr = inputQuantidade.getText().toString();
                 String bitsStr = inputBits.getText().toString();
+                if (geracaoAleatoriaAtiva.get()) return;
 
                 if (quantidadeStr.isEmpty() || bitsStr.isEmpty()) {
                     Toast.makeText(this, "Preencha todos os campos", Toast.LENGTH_SHORT).show();
@@ -3353,14 +3091,33 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                cancelarOperacaoAtual.set(false);
+                if (bits == 1) {
+                    Toast.makeText(this, "Não existe número primo de 1 bit.", Toast.LENGTH_LONG).show();
+                    return;
+                }
 
-                final boolean usarRotaNativa = deveUsarRotaNativaPrimos(bits);
-                if (usarRotaNativa) {
+                int disponiveis = shortPrimeCountNativo(bits);
+                if (disponiveis < 0) {
+                    Toast.makeText(this, "Não foi possível preparar o sorteio.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (disponiveis > 0) {
+                    if (quantidade > disponiveis) {
+                        Toast.makeText(this, "Há apenas " + disponiveis + " primos distintos de "
+                            + bits + " bits. Reduza a quantidade.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    mostrarPrimosCurtos(bits, quantidade);
+                    return;
+                }
+
+                if (bits > LIMIAR_BITS_ROTA_NATIVA) {
                     mostrarDialogoEscolhaPrimosUltra(bits, quantidade);
                     return;
                 }
 
+                if (!geracaoAleatoriaAtiva.compareAndSet(false, true)) return;
+                cancelarOperacaoAtual.set(false);
                 if (btnCancelarOperacaoAtual != null) {
                     btnCancelarOperacaoAtual.setVisibility(View.VISIBLE);
                 }
@@ -3372,7 +3129,7 @@ public class MainActivity extends AppCompatActivity {
                     "Bits: " + bits
                 );
 
-                new Thread(() -> executarThreadPrimosAleatorios(bits, quantidade, false, cronometroAtivo)).start();
+                new Thread(() -> executarThreadPrimosAleatorios(bits, quantidade, cronometroAtivo)).start();
 
             } catch (NumberFormatException e) {
                 Toast.makeText(this, "Digite números válidos", Toast.LENGTH_SHORT).show();
@@ -3390,6 +3147,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void criarInterfacePrimeMatchMapa() {
+        appHeader.setVisibility(View.VISIBLE);
         contentContainer.removeAllViews();
         carregarPrimeMatchPoderes();
 
@@ -3514,7 +3272,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int calcularPrimeMatchMetaFase(int fase) {
-        return 760 + Math.max(1, fase) * 140;
+        return matchLevelTargetNativo(fase);
     }
 
     private int obterPrimeMatchFaseLiberada() {
@@ -3548,6 +3306,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void iniciarPrimeMatchFase(int fase) {
+        appHeader.setVisibility(View.GONE);
         contentContainer.removeAllViews();
 
         primeMatchValues = new int[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
@@ -3559,7 +3318,7 @@ public class MainActivity extends AppCompatActivity {
         primeMatchHistoryCounter = 0;
         primeMatchScore = 0;
         primeMatchCurrentLevel = Math.max(1, Math.min(PRIME_MATCH_MAX_LEVELS, fase));
-        primeMatchMoves = Math.max(16, 22 - Math.min(6, primeMatchCurrentLevel / 4));
+        primeMatchMoves = matchLevelMovesNativo(primeMatchCurrentLevel);
         primeMatchTarget = calcularPrimeMatchMetaFase(primeMatchCurrentLevel);
         primeMatchDragStart = -1;
         primeMatchDragTarget = -1;
@@ -3586,13 +3345,6 @@ public class MainActivity extends AppCompatActivity {
         titulo.setTextColor(corTextoPrincipal());
         titulo.setPadding(0, dpUi(10), 0, dpUi(4));
         contentContainer.addView(titulo);
-
-        TextView subtitulo = new TextView(this);
-        subtitulo.setText("Arraste uma bolinha para uma vizinha. Soma prima vira uma peça acumulada; soma composta apenas explode.");
-        subtitulo.setTextSize(13);
-        subtitulo.setTextColor(corTextoSecundario());
-        subtitulo.setPadding(0, 0, 0, dpUi(12));
-        contentContainer.addView(subtitulo);
 
         LinearLayout placar = new LinearLayout(this);
         placar.setOrientation(LinearLayout.HORIZONTAL);
@@ -3731,6 +3483,20 @@ public class MainActivity extends AppCompatActivity {
         }
 
         primeMatchGrid.setOnTouchListener(primeMatchTouchListener);
+        primeMatchGrid.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                                  oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            if (width <= 0 || width == oldRight - oldLeft) return;
+            int size = Math.max(dpUi(28),
+                (width - view.getPaddingLeft() - view.getPaddingRight()) / PRIME_MATCH_COLS - dpUi(8));
+            GridLayout grid = (GridLayout) view;
+            for (int i = 0; i < grid.getChildCount(); i++) {
+                View cell = grid.getChildAt(i);
+                ViewGroup.LayoutParams params = cell.getLayoutParams();
+                params.height = size;
+                cell.setLayoutParams(params);
+            }
+        });
         primeMatchStage.addView(primeMatchGrid);
         contentContainer.addView(primeMatchStage);
 
@@ -3758,122 +3524,156 @@ public class MainActivity extends AppCompatActivity {
         verificarPrimeMatchJogadasPossiveis();
     }
 
-    private void criarInterfaceCorridaPrima() {
-        contentContainer.removeAllViews();
+    private void abrirArcade(boolean voo) {
+        menuScrollView.setVisibility(View.GONE);
+        appHeader.setVisibility(View.GONE);
 
-        TextView titulo = new TextView(this);
-        titulo.setText("Corrida Prima");
-        titulo.setTextSize(23);
-        titulo.setTypeface(null, Typeface.BOLD);
-        titulo.setTextColor(corTextoPrincipal());
-        titulo.setGravity(Gravity.CENTER);
-        titulo.setPadding(0, dpUi(10), 0, dpUi(4));
-        contentContainer.addView(titulo);
+        LinearLayout host = new LinearLayout(this);
+        host.setOrientation(LinearLayout.VERTICAL);
+        host.setBackgroundColor(Color.parseColor("#101C28"));
+        host.setPadding(0, dpUi(4), 0, 0);
+        arcadeHost = host;
 
-        TextView subtitulo = new TextView(this);
-        subtitulo.setText("Corrida infinita: compostos encerram a jogada; primos viram bonus.");
-        subtitulo.setTextSize(13);
-        subtitulo.setTextColor(corTextoSecundario());
-        subtitulo.setGravity(Gravity.CENTER);
-        subtitulo.setPadding(dpUi(6), 0, dpUi(6), dpUi(12));
-        contentContainer.addView(subtitulo);
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        Button voltar = arcadeButton("\u2190", "Voltar ao menu");
+        voltar.setOnClickListener(v -> onBackPressed());
+        toolbar.addView(voltar, new LinearLayout.LayoutParams(dpUi(48), dpUi(48)));
+        TextView title = new TextView(this);
+        title.setText(voo ? "Resgate Espacial" : "Corrida Prima");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(18);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        toolbar.addView(title, new LinearLayout.LayoutParams(0, dpUi(48), 1f));
+        Button reiniciar = arcadeButton("\u21bb", "Reiniciar");
+        toolbar.addView(reiniciar, new LinearLayout.LayoutParams(dpUi(48), dpUi(48)));
+        host.addView(toolbar);
 
-        primeRunnerView = new PrimeRunnerView(this);
-        LinearLayout.LayoutParams jogoLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpUi(330)
-        );
-        jogoLp.setMargins(0, 0, 0, dpUi(12));
-        primeRunnerView.setLayoutParams(jogoLp);
-        contentContainer.addView(primeRunnerView);
-
-        Button btnReiniciar = criarBotaoModerno(
-                "Reiniciar corrida",
-                Color.parseColor("#256D85"),
-                Color.parseColor("#5EA7B8")
-        );
-        btnReiniciar.setOnClickListener(v -> {
-            if (primeRunnerView != null) {
-                primeRunnerView.reiniciarPartida();
-            }
-        });
-        contentContainer.addView(btnReiniciar);
-
-        Button btnVoltar = criarBotaoModerno(
-                "Voltar ao menu",
-                Color.parseColor("#52637A"),
-                Color.parseColor("#6B7B91")
-        );
-        btnVoltar.setOnClickListener(v -> onBackPressed());
-        contentContainer.addView(btnVoltar);
-        rolarConteudoParaInicio();
-    }
-
-    private void criarInterfaceResgateEspacial() {
-        contentContainer.removeAllViews();
-
-        TextView titulo = new TextView(this);
-        titulo.setText("Resgate Espacial");
-        titulo.setTextSize(23);
-        titulo.setTypeface(null, Typeface.BOLD);
-        titulo.setTextColor(corTextoPrincipal());
-        titulo.setGravity(Gravity.CENTER);
-        titulo.setPadding(0, dpUi(10), 0, dpUi(4));
-        contentContainer.addView(titulo);
-
-        TextView subtitulo = new TextView(this);
-        subtitulo.setText("Resgate primos, limpe compostos e continue sua viagem depois.");
-        subtitulo.setTextSize(13);
-        subtitulo.setTextColor(corTextoSecundario());
-        subtitulo.setGravity(Gravity.CENTER);
-        subtitulo.setPadding(dpUi(6), 0, dpUi(6), dpUi(12));
-        contentContainer.addView(subtitulo);
-
-        primeShooterView = new PrimeShooterView(this);
-        LinearLayout.LayoutParams jogoLp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dpUi(380)
-        );
-        jogoLp.setMargins(0, 0, 0, dpUi(12));
-        primeShooterView.setLayoutParams(jogoLp);
-        contentContainer.addView(primeShooterView);
-
-        Button btnReiniciar = criarBotaoModerno(
-                "Reiniciar voo",
-                Color.parseColor("#30336B"),
-                Color.parseColor("#7B61C8")
-        );
-        btnReiniciar.setOnClickListener(v -> {
-            if (primeShooterView != null) {
-                primeShooterView.reiniciarDoZero();
-            }
-        });
-        contentContainer.addView(btnReiniciar);
-
-        Button btnVoltar = criarBotaoModerno(
-                "Salvar e voltar",
-                Color.parseColor("#52637A"),
-                Color.parseColor("#6B7B91")
-        );
-        btnVoltar.setOnClickListener(v -> {
-            if (primeShooterView != null) {
-                primeShooterView.salvarProgresso();
-            }
-            onBackPressed();
-        });
-        contentContainer.addView(btnVoltar);
-        rolarConteudoParaInicio();
-    }
-
-    private int gerarValorArcadePrimo(boolean primo) {
-        int maximo = 97 + primeMatchRandom.nextInt(54);
-        for (int tentativa = 0; tentativa < 120; tentativa++) {
-            int valor = 2 + primeMatchRandom.nextInt(maximo - 1);
-            if (ehPrimo(valor) == primo) {
-                return valor;
-            }
+        View jogo;
+        if (voo) {
+            primeShooterView = new PrimeShooterView(this);
+            jogo = primeShooterView;
+            reiniciar.setOnClickListener(v -> primeShooterView.reiniciarDoZero());
+        } else {
+            primeRunnerView = new PrimeRunnerView(this);
+            jogo = primeRunnerView;
+            reiniciar.setOnClickListener(v -> primeRunnerView.reiniciarPartida());
         }
-        return primo ? 97 : 96;
+        host.addView(jogo, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        if (!voo) {
+            Button pular = arcadeButton("Pular", "Pular");
+            configurarBotaoPular(pular, primeRunnerView::tocarPista);
+            host.addView(pular, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpUi(48)));
+        }
+        rootMainLayout.addView(host, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private void configurarBotaoPular(Button button, Runnable pular) {
+        button.setOnClickListener(view -> pular.run());
+        button.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    view.setPressed(true);
+                    pular.run();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    view.setPressed(false);
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        });
+    }
+
+    private Button arcadeButton(String label, String description) {
+        Button button = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        button.setText(label);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(19);
+        button.setAllCaps(false);
+        button.setPadding(0, 0, 0, 0);
+        button.setContentDescription(description);
+        return button;
+    }
+
+    private android.graphics.Bitmap[] carregarVeiculos(String... nomes) {
+        android.graphics.Bitmap[] imagens = new android.graphics.Bitmap[nomes.length];
+        for (int i = 0; i < nomes.length; i++) {
+            imagens[i] = carregarImagemArcade(nomes[i] + ".png");
+        }
+        return imagens;
+    }
+
+    private android.graphics.Bitmap carregarImagemArcade(String nome) {
+        try (java.io.InputStream stream = getAssets().open("arcade/" + nome)) {
+            return android.graphics.BitmapFactory.decodeStream(stream);
+        } catch (IOException e) {
+            Log.e(TAG, "Imagem do jogo indisponivel: " + nome, e);
+            return null;
+        }
+    }
+
+    private boolean desenharFotoArcade(Canvas canvas, android.graphics.Bitmap foto, int w, int h,
+                                      int tier, Paint paint) {
+        if (foto == null) return false;
+        float scale = Math.max((float) w / foto.getWidth(), (float) h / foto.getHeight());
+        float halfW = foto.getWidth() * scale / 2f, halfH = foto.getHeight() * scale / 2f;
+        paint.setColor(Color.WHITE);
+        paint.setFilterBitmap(true);
+        canvas.drawBitmap(foto, null, new RectF(w / 2f - halfW, h / 2f - halfH,
+            w / 2f + halfW, h / 2f + halfH), paint);
+        paint.setColor(tier == 0 ? 0x5910202C : tier == 1 ? 0x60332135 : 0x6011293D);
+        canvas.drawRect(0, 0, w, h, paint);
+        return true;
+    }
+
+    private boolean desenharVeiculo(Canvas canvas, android.graphics.Bitmap imagem, RectF area, Paint paint) {
+        if (imagem == null) return false;
+        float scale = Math.min(area.width() / imagem.getWidth(), area.height() / imagem.getHeight());
+        float w = imagem.getWidth() * scale / 2f;
+        float h = imagem.getHeight() * scale;
+        float cx = area.centerX();
+        paint.setFilterBitmap(true);
+        canvas.drawBitmap(imagem, null, new RectF(cx - w, area.bottom - h, cx + w, area.bottom), paint);
+        return true;
+    }
+
+    private void desenharEscapeArcade(Canvas canvas, float x, float y, long now, boolean voo, Paint paint) {
+        for (int i = 0; i < 6; i++) {
+            float fase = ((now % 500L) / 500f + i / 6f) % 1f;
+            paint.setColor(withAlpha(voo ? 0xFF8FEDFF : 0xFFD6DDE0, (int) ((1f - fase) * 85f)));
+            float px = voo ? x + (i % 3 - 1) * fase * dpUi(12) : x - fase * dpUi(40);
+            float py = voo ? y + fase * dpUi(31) : y - fase * dpUi(14);
+            canvas.drawCircle(px, py, dpUi(3) + fase * dpUi(6), paint);
+        }
+    }
+
+    private static final class ArcadeRules {
+        private static final int[] DATA = arcadeRulesNativo();
+        static final int MAX_FRAME_MS = DATA[0], START_MS = DATA[1], SHOT_MS = DATA[2];
+        static final int SHIELD_MS = DATA[3], HIT_GRACE_MS = DATA[4], RUNNER_X = DATA[5];
+        static final int FLOOR_Y = DATA[6], RUNNER_CENTER = DATA[7], SHIP_Y = DATA[8];
+        static final int SHIP_MARGIN = DATA[9], CONTROL_HEIGHT = DATA[10], SPAWN_MARGIN = DATA[11];
+        static final int SHOT_OFFSET = DATA[12], SHOT_SPEED = DATA[13], LIVES = DATA[14], LANE_MAX = DATA[15];
+        static final int RUNNER_BOX = DATA[16], RUNNER_NUMBER = DATA[17], SHIP_BOX = DATA[18];
+        static final int SPACE_PRIME = DATA[19], SPACE_COMPOSITE = DATA[20], SHOT_BOX = DATA[21];
+        static final int RESCUE = DATA[22], SHIELD = DATA[23], DAMAGE = DATA[24];
+    }
+
+    private void desenharPausaArcade(Canvas canvas, int w, int h, boolean retomar, Paint paint) {
+        paint.setColor(0x800B1824);
+        canvas.drawRect(0, h / 2f - dpUi(25), w, h / 2f + dpUi(25), paint);
+        paint.setTypeface(Typeface.DEFAULT_BOLD);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(dpUi(18));
+        paint.setColor(Color.WHITE);
+        canvas.drawText(retomar ? "Toque para continuar" : "Toque para começar", w / 2f, h / 2f + dpUi(6), paint);
     }
 
     private String formatarPontuacaoArcade(int valor) {
@@ -4001,31 +3801,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean primeMatchPoderAtivoNaFase(String poder) {
-        int ciclo = Math.max(0, primeMatchWins % 4);
-        if (ciclo == 0) {
-            return KEY_PM_HAMMER.equals(poder)
-                    || KEY_PM_PLUS_1.equals(poder)
-                    || KEY_PM_RESHUFFLE.equals(poder)
-                    || KEY_PM_HINT.equals(poder);
+        int disponiveis = matchLevelPowersNativo(primeMatchCurrentLevel);
+        for (int i = 0; i < PRIME_MATCH_POWER_KEYS.length; i++) {
+            if (PRIME_MATCH_POWER_KEYS[i].equals(poder)) return (disponiveis & (1 << i)) != 0;
         }
-        if (ciclo == 1) {
-            return KEY_PM_PLUS_2.equals(poder)
-                    || KEY_PM_FREE_SWAP.equals(poder)
-                    || KEY_PM_HINT.equals(poder)
-                    || KEY_PM_ROW_RAY.equals(poder);
-        }
-        if (ciclo == 2) {
-            return KEY_PM_PLUS_1.equals(poder)
-                    || KEY_PM_PLUS_3.equals(poder)
-                    || KEY_PM_COLOR_COPY.equals(poder)
-                    || KEY_PM_COMBO_MULT.equals(poder)
-                    || KEY_PM_COL_RAY.equals(poder);
-        }
-        return KEY_PM_HAMMER.equals(poder)
-                || KEY_PM_POLISH_UP.equals(poder)
-                || KEY_PM_POLISH_DOWN.equals(poder)
-                || KEY_PM_RESHUFFLE.equals(poder)
-                || KEY_PM_HINT.equals(poder);
+        return false;
     }
 
     private Button criarPrimeMatchBotaoPoder(String texto, int corBase) {
@@ -4666,59 +4446,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int gerarPrimeMatchValorVariado() {
-        int rolagem = primeMatchRandom.nextInt(100);
-        int min;
-        int max;
-        if (rolagem < 48) {
-            min = 1;
-            max = 29;
-        } else if (rolagem < 78) {
-            min = 30;
-            max = 61;
-        } else if (rolagem < 94) {
-            min = 62;
-            max = 97;
-        } else {
-            min = 98;
-            max = 149;
-        }
-        return min + primeMatchRandom.nextInt(max - min + 1);
+        return matchDrawValueNativo(primeMatchRandom.nextInt(PRIME_MATCH_VALUE_TICKETS));
     }
 
     private boolean primeMatchValorCriaPadraoLocal(int row, int col, int valor, int cor) {
-        int repeticoesValor = 0;
-        int repeticoesCorValor = 0;
-        for (int dr = -1; dr <= 1; dr++) {
-            for (int dc = -1; dc <= 1; dc++) {
-                if (dr == 0 && dc == 0) {
-                    continue;
-                }
-                int r = row + dr;
-                int c = col + dc;
-                if (r < 0 || r >= PRIME_MATCH_ROWS || c < 0 || c >= PRIME_MATCH_COLS) {
-                    continue;
-                }
-                if (primeMatchValues[r][c] == valor) {
-                    repeticoesValor++;
-                    if (primeMatchColors[r][c] == cor) {
-                        repeticoesCorValor++;
-                    }
-                }
-            }
+        int[] valores = new int[PRIME_MATCH_ROWS * PRIME_MATCH_COLS];
+        int[] cores = new int[valores.length];
+        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
+            System.arraycopy(primeMatchValues[r], 0, valores, r * PRIME_MATCH_COLS, PRIME_MATCH_COLS);
+            System.arraycopy(primeMatchColors[r], 0, cores, r * PRIME_MATCH_COLS, PRIME_MATCH_COLS);
         }
-        if (repeticoesCorValor > 0 || repeticoesValor >= 2) {
-            return true;
-        }
-        if (col >= 2
-                && primeMatchValues[row][col - 1] != 0
-                && primeMatchValues[row][col - 2] != 0
-                && primeMatchValues[row][col - 2] + valor == 2 * primeMatchValues[row][col - 1]) {
-            return true;
-        }
-        return row >= 2
-                && primeMatchValues[row - 1][col] != 0
-                && primeMatchValues[row - 2][col] != 0
-                && primeMatchValues[row - 2][col] + valor == 2 * primeMatchValues[row - 1][col];
+        return matchLocalPatternNativo(valores, cores, row * PRIME_MATCH_COLS + col, valor, cor);
     }
 
     private void gerarPrimeMatchPecaEvitandoTrinca(int row, int col) {
@@ -5048,6 +4786,11 @@ public class MainActivity extends AppCompatActivity {
             cancelarPrimeMatchArrasto();
             return;
         }
+        int corEscolhida = primeMatchColors[idx / PRIME_MATCH_COLS][idx % PRIME_MATCH_COLS];
+        if (primeMatchEhCorPreta(corEscolhida)) {
+            primeMatchStatusView.setText("Peças pretas não podem copiar nem emprestar a cor.");
+            return;
+        }
         if (primeMatchPowerFirstSelection < 0) {
             primeMatchPowerFirstSelection = idx;
             destacarPrimeMatchIndicePoder(idx);
@@ -5060,6 +4803,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         int destino = primeMatchPowerFirstSelection;
+        if (primeMatchColors[destino / PRIME_MATCH_COLS][destino % PRIME_MATCH_COLS] == corEscolhida) {
+            primeMatchStatusView.setText("Escolha uma cor diferente.");
+            return;
+        }
         primeMatchMergeAnchor = destino;
         primeMatchMergeFallbackAnchor = idx;
         primeMatchColors[destino / PRIME_MATCH_COLS][destino % PRIME_MATCH_COLS] =
@@ -5081,14 +4828,9 @@ public class MainActivity extends AppCompatActivity {
         }
         int row = idx / PRIME_MATCH_COLS;
         int col = idx % PRIME_MATCH_COLS;
-        int novoValor = primeMatchValues[row][col] + delta;
-        if (novoValor < 1 || novoValor > 19) {
-            primeMatchStatusView.setText(delta > 0
-                    ? "Essa bolinha já está no valor máximo."
-                    : "Essa bolinha já está no valor mínimo.");
-            cancelarPrimeMatchArrasto();
-            primeMatchPowerMode = PRIME_MATCH_POWER_NONE;
-            atualizarPrimeMatchBotoesPoder();
+        int novoValor = matchPolishedValueNativo(primeMatchValues[row][col], primeMatchColors[row][col], delta);
+        if (novoValor == 0) {
+            primeMatchStatusView.setText("Escolha uma peça colorida cujo valor possa ficar entre 1 e 149.");
             return;
         }
 
@@ -5558,30 +5300,24 @@ public class MainActivity extends AppCompatActivity {
         if (algumPrimeMatchResultadoUsouAjuste(resultados)) {
             consumirPrimeMatchAjustePendente();
         }
-        primeMatchScore += saldo;
-        atualizarPrimeMatchPlacar();
         atualizarPrimeMatchBotoesPoder();
 
-        primeMatchSelection.clear();
-        marcarPrimeMatchSelecao(calculoMarcadas);
-        atualizarPrimeMatchCelulas();
-        primeMatchStatusView.setText((combos == 0 ? "Jogada" : "Combo " + (combos + 1))
-                + " em cena no tabuleiro.");
-        registrarPrimeMatchHistorico(resultados, combos + 1);
-        mostrarPrimeMatchResultadoFlutuante(resultados, saldo);
-        tocarPrimeMatchSomResultados(resultados, combos + 1);
         final int saldoResolvido = saldo;
+        final GridLayout tabuleiro = primeMatchGrid;
 
-        animarPrimeMatchDestaqueCalculo(calculoMarcadas, explosaoMarcadas, () -> {
-            if (!primeMatchResolving) {
+        apresentarPrimeMatchCalculos(tabuleiro, resultados, combos + 1, 0, () -> {
+            if (!primeMatchResolving || primeMatchGrid != tabuleiro || !tabuleiro.isAttachedToWindow()) {
                 return;
             }
             animarPrimeMatchExplosao(explosaoMarcadas, () -> {
-                if (!primeMatchResolving) {
+                if (!primeMatchResolving || primeMatchGrid != tabuleiro || !tabuleiro.isAttachedToWindow()) {
                     return;
                 }
                 primeMatchSelection.clear();
+                registrarPrimeMatchHistorico(resultados, combos + 1);
                 aplicarPrimeMatchResultados(resultados);
+                primeMatchScore = (int) Math.min(Integer.MAX_VALUE, (long) primeMatchScore + saldoResolvido);
+                atualizarPrimeMatchPlacar();
                 atualizarPrimeMatchCelulas();
                 animarPrimeMatchFusoes(resultados);
                 primeMatchMergeAnchor = -1;
@@ -5593,6 +5329,25 @@ public class MainActivity extends AppCompatActivity {
                 ), 260);
             });
         });
+    }
+
+    private void apresentarPrimeMatchCalculos(GridLayout tabuleiro, List<PrimeMatchResultadoGrupo> resultados,
+                                             int combo, int indice, Runnable aoTerminar) {
+        if (!primeMatchResolving || primeMatchGrid != tabuleiro || !tabuleiro.isAttachedToWindow()) return;
+        if (indice >= resultados.size()) {
+            aoTerminar.run();
+            return;
+        }
+        PrimeMatchResultadoGrupo atual = resultados.get(indice);
+        List<PrimeMatchResultadoGrupo> resultado = java.util.Collections.singletonList(atual);
+        primeMatchSelection.clear();
+        marcarPrimeMatchSelecao(atual.grupo.marcadas);
+        atualizarPrimeMatchCelulas();
+        primeMatchStatusView.setText((combo == 1 ? "Jogada" : "Combo " + combo) + " em cena no tabuleiro.");
+        mostrarPrimeMatchResultadoFlutuante(resultado, atual.saldo, indice + 1, resultados.size());
+        tocarPrimeMatchSomResultados(resultado, combo);
+        animarPrimeMatchDestaqueCalculo(atual.grupo.marcadas, atual.explosaoMarcada,
+            () -> apresentarPrimeMatchCalculos(tabuleiro, resultados, combo, indice + 1, aoTerminar));
     }
 
     private void finalizarPrimeMatchResolucaoAnimada(int combos, int removidasTotal, int saldoTotal) {
@@ -5652,51 +5407,33 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String concederPrimeMatchRecompensasVitoria() {
-        if (primeMatchRewardGranted) {
-            return "";
-        }
+        if (primeMatchRewardGranted) return "";
         primeMatchRewardGranted = true;
-        primeMatchWins++;
-        StringBuilder recompensas = new StringBuilder("Recompensas: ");
-        switch (primeMatchWins % 6) {
-            case 1:
-                primeMatchHammerCount++;
-                primeMatchPlus1Count++;
-                recompensas.append("Martelo +1, +1 +1");
-                break;
-            case 2:
-                primeMatchReshuffleCount++;
-                primeMatchPlus2Count++;
-                primeMatchHintCount++;
-                recompensas.append("Reorganizar +1, +2 +1, Dica prima +1");
-                break;
-            case 3:
-                primeMatchPlus3Count++;
-                primeMatchFreeSwapCount++;
-                recompensas.append("+3 +1, Troca livre +1");
-                break;
-            case 4:
-                primeMatchColorCopyCount++;
-                primeMatchPolishUpCount++;
-                primeMatchPolishDownCount++;
-                recompensas.append("Coringa +1, Lapidar +1 +1, Lapidar -1 +1");
-                break;
-            case 5:
-                primeMatchRowRayCount++;
-                primeMatchColRayCount++;
-                recompensas.append("Raio linha +1, Raio coluna +1");
-                break;
-            default:
-                primeMatchHintCount++;
-                primeMatchComboMultCount++;
-                primeMatchHammerCount++;
-                recompensas.append("Dica prima +1, Combo x2 +1, Martelo +1");
-                break;
+        int mask = matchVictoryRewardsNativo(++primeMatchWins);
+        List<String> recompensas = new ArrayList<>();
+        for (int i = 0; i < PRIME_MATCH_POWER_KEYS.length; i++) {
+            if ((mask & (1 << i)) == 0) continue;
+            switch (PRIME_MATCH_POWER_KEYS[i]) {
+                case KEY_PM_HAMMER: primeMatchHammerCount++; break;
+                case KEY_PM_PLUS_1: primeMatchPlus1Count++; break;
+                case KEY_PM_PLUS_2: primeMatchPlus2Count++; break;
+                case KEY_PM_PLUS_3: primeMatchPlus3Count++; break;
+                case KEY_PM_RESHUFFLE: primeMatchReshuffleCount++; break;
+                case KEY_PM_FREE_SWAP: primeMatchFreeSwapCount++; break;
+                case KEY_PM_COLOR_COPY: primeMatchColorCopyCount++; break;
+                case KEY_PM_POLISH_UP: primeMatchPolishUpCount++; break;
+                case KEY_PM_POLISH_DOWN: primeMatchPolishDownCount++; break;
+                case KEY_PM_ROW_RAY: primeMatchRowRayCount++; break;
+                case KEY_PM_COL_RAY: primeMatchColRayCount++; break;
+                case KEY_PM_HINT: primeMatchHintCount++; break;
+                case KEY_PM_COMBO_MULT: primeMatchComboMultCount++; break;
+                default: continue;
+            }
+            recompensas.add(PRIME_MATCH_POWER_LABELS[i] + " +1");
         }
-
         salvarPrimeMatchPoderes();
         atualizarPrimeMatchBotoesPoder();
-        return recompensas.toString();
+        return recompensas.isEmpty() ? "" : "Recompensas: " + android.text.TextUtils.join(", ", recompensas);
     }
 
     private List<PrimeMatchResultadoGrupo> prepararPrimeMatchResultados(
@@ -5708,26 +5445,34 @@ public class MainActivity extends AppCompatActivity {
         ArrayList<PrimeMatchResultadoGrupo> resultados = new ArrayList<>();
         int indiceAjuste = escolherPrimeMatchIndiceAjuste(grupos);
         boolean multiplicadorConsumido = false;
-        boolean[][] todasGruposMarcadas = juntarPrimeMatchGrupos(grupos);
-        boolean[][] extrasPontuadas = new boolean[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
+        long todasGruposMarcadas = 0;
+        for (PrimeMatchGrupo grupo : grupos) todasGruposMarcadas |= grupo.mascara;
+        long extrasPontuadas = 0;
+        long pretas = 0;
+        int[] valores = new int[PRIME_MATCH_ROWS * PRIME_MATCH_COLS];
+        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
+            for (int c = 0; c < PRIME_MATCH_COLS; c++) {
+                if (!primeMatchCelulaOcupada(r, c)) continue;
+                int index = r * PRIME_MATCH_COLS + c;
+                valores[index] = primeMatchValues[r][c];
+                if (primeMatchEhCorPreta(primeMatchColors[r][c])) pretas |= 1L << index;
+            }
+        }
 
         for (int i = 0; i < grupos.size(); i++) {
             PrimeMatchGrupo grupo = grupos.get(i);
             boolean usaAjuste = ajusteUsado > 0 && i == indiceAjuste;
-            int somaCalculada = grupo.soma + (usaAjuste ? ajusteUsado : 0);
-            boolean primo = ehPrimo(somaCalculada);
-            int especialTipo = obterPrimeMatchEspecialPreto(grupo, primo);
-            boolean[][] explosaoMarcada = criarPrimeMatchMascaraExplosao(grupo, especialTipo);
-            int especialExtra = primo
-                    ? somarPrimeMatchExtraEspecial(
-                    explosaoMarcada,
-                    grupo.marcadas,
-                    todasGruposMarcadas,
-                    extrasPontuadas
-            )
-                    : 0;
-            int somaFinal = somaCalculada + especialExtra;
-            int saldo = primo ? somaFinal : 0;
+            int somaCalculada = (int) Math.min(Integer.MAX_VALUE, (long) grupo.soma + (usaAjuste ? ajusteUsado : 0));
+            long[] evento = matchResolveNativo(valores, pretas, grupo.mascara, todasGruposMarcadas,
+                extrasPontuadas, somaCalculada);
+            boolean[][] explosaoMarcada = decodificarPrimeMatchMascara(evento[0]);
+            extrasPontuadas |= evento[1];
+            int saldo = (int) Math.min(Integer.MAX_VALUE, evento[2]);
+            int valorPreta = (int) Math.min(Integer.MAX_VALUE, evento[3]);
+            boolean primo = valorPreta > 0;
+            int somaFinal = primo ? saldo : somaCalculada;
+            int especialExtra = Math.max(0, somaFinal - somaCalculada);
+            int especialTipo = (int) evento[4];
             boolean multiplicadorUsado = false;
 
             if (aplicarPoderes
@@ -5739,7 +5484,7 @@ public class MainActivity extends AppCompatActivity {
                 primeMatchComboMultCount--;
                 primeMatchComboMultiplierArmed = false;
                 salvarPrimeMatchPoderes();
-                saldo *= 2;
+                saldo = (int) Math.min(Integer.MAX_VALUE, 2L * saldo);
                 multiplicadorUsado = true;
                 multiplicadorConsumido = true;
             }
@@ -5749,6 +5494,7 @@ public class MainActivity extends AppCompatActivity {
                     explosaoMarcada,
                     somaCalculada,
                     somaFinal,
+                    valorPreta,
                     saldo,
                     escolherPrimeMatchAncoraGrupo(grupo),
                     primo,
@@ -5763,66 +5509,6 @@ public class MainActivity extends AppCompatActivity {
         return resultados;
     }
 
-    private int obterPrimeMatchEspecialPreto(PrimeMatchGrupo grupo, boolean primo) {
-        if (!primo || grupo.pretas <= 0) {
-            return PRIME_MATCH_SPECIAL_NONE;
-        }
-        if (grupo.pretas >= 3) {
-            return PRIME_MATCH_SPECIAL_FULL_BOARD;
-        }
-        if (grupo.pretas == 2) {
-            return PRIME_MATCH_SPECIAL_BOARD_PRIMES;
-        }
-        return PRIME_MATCH_SPECIAL_AROUND_BLACK;
-    }
-
-    private boolean[][] criarPrimeMatchMascaraExplosao(PrimeMatchGrupo grupo, int especialTipo) {
-        boolean[][] marcadas = copiarPrimeMatchMascara(grupo.marcadas);
-        if (especialTipo == PRIME_MATCH_SPECIAL_NONE) {
-            return marcadas;
-        }
-
-        if (especialTipo == PRIME_MATCH_SPECIAL_AROUND_BLACK) {
-            for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-                for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-                    if (!grupo.marcadas[r][c] || !primeMatchEhCorPreta(primeMatchColors[r][c])) {
-                        continue;
-                    }
-                    for (int dr = -1; dr <= 1; dr++) {
-                        for (int dc = -1; dc <= 1; dc++) {
-                            int nr = r + dr;
-                            int nc = c + dc;
-                            if (primeMatchCelulaOcupada(nr, nc)) {
-                                marcadas[nr][nc] = true;
-                            }
-                        }
-                    }
-                }
-            }
-            return marcadas;
-        }
-
-        if (especialTipo == PRIME_MATCH_SPECIAL_BOARD_PRIMES) {
-            for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-                for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-                    if (primeMatchCelulaOcupada(r, c) && ehPrimo(primeMatchValues[r][c])) {
-                        marcadas[r][c] = true;
-                    }
-                }
-            }
-            return marcadas;
-        }
-
-        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-            for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-                if (primeMatchCelulaOcupada(r, c)) {
-                    marcadas[r][c] = true;
-                }
-            }
-        }
-        return marcadas;
-    }
-
     private boolean primeMatchCelulaOcupada(int row, int col) {
         return row >= 0
                 && row < PRIME_MATCH_ROWS
@@ -5830,38 +5516,6 @@ public class MainActivity extends AppCompatActivity {
                 && col < PRIME_MATCH_COLS
                 && primeMatchValues[row][col] != 0
                 && primeMatchColors[row][col] >= 0;
-    }
-
-    private boolean[][] copiarPrimeMatchMascara(boolean[][] origem) {
-        boolean[][] copia = new boolean[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
-        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-            for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-                copia[r][c] = origem[r][c];
-            }
-        }
-        return copia;
-    }
-
-    private int somarPrimeMatchExtraEspecial(
-            boolean[][] explosaoMarcada,
-            boolean[][] grupoMarcado,
-            boolean[][] todasGruposMarcadas,
-            boolean[][] extrasPontuadas
-    ) {
-        int extra = 0;
-        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-            for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-                if (!explosaoMarcada[r][c]
-                        || grupoMarcado[r][c]
-                        || todasGruposMarcadas[r][c]
-                        || extrasPontuadas[r][c]) {
-                    continue;
-                }
-                extra += primeMatchValues[r][c];
-                extrasPontuadas[r][c] = true;
-            }
-        }
-        return extra;
     }
 
     private int escolherPrimeMatchIndiceAjuste(List<PrimeMatchGrupo> grupos) {
@@ -5979,7 +5633,7 @@ public class MainActivity extends AppCompatActivity {
             }
             int row = resultado.ancora / PRIME_MATCH_COLS;
             int col = resultado.ancora % PRIME_MATCH_COLS;
-            primeMatchValues[row][col] = resultado.somaFinal;
+            primeMatchValues[row][col] = Math.max(primeMatchValues[row][col], resultado.valorPreta);
             primeMatchColors[row][col] = PRIME_MATCH_COR_PRETA;
             fixas[row][col] = true;
         }
@@ -6053,7 +5707,7 @@ public class MainActivity extends AppCompatActivity {
         if (resultado.especialExtra > 0) {
             calculo += "; efeito preto +" + resultado.especialExtra + " => " + resultado.somaFinal;
         }
-        String texto = calculo + ". Soma prima: vira peça preta " + resultado.somaFinal
+        String texto = calculo + ". Soma prima: vira peça preta " + resultado.valorPreta
                 + " e soma +" + resultado.saldo;
         if (resultado.especialTipo != PRIME_MATCH_SPECIAL_NONE) {
             texto += " (" + nomePrimeMatchEspecialPreto(resultado.especialTipo) + ")";
@@ -6101,13 +5755,13 @@ public class MainActivity extends AppCompatActivity {
                             .append(" => ").append(resultado.somaFinal);
                 }
                 linha.append(" | primo, +").append(resultado.saldo)
-                        .append(", virou preta");
+                        .append(", virou preta ").append(resultado.valorPreta);
             } else {
                 linha.append(" | composto, explodiu tudo, sem desconto");
             }
             primeMatchHistory.add(0, linha.toString());
         }
-        while (primeMatchHistory.size() > 8) {
+        while (primeMatchHistory.size() > PRIME_MATCH_HISTORY_MAX) {
             primeMatchHistory.remove(primeMatchHistory.size() - 1);
         }
         atualizarPrimeMatchHistoricoView();
@@ -6121,7 +5775,7 @@ public class MainActivity extends AppCompatActivity {
         if (primeMatchHistory.isEmpty()) {
             sb.append("\nAinda sem cálculos.");
         } else {
-            int limite = Math.min(6, primeMatchHistory.size());
+            int limite = primeMatchHistory.size();
             for (int i = 0; i < limite; i++) {
                 sb.append("\n").append(primeMatchHistory.get(i));
             }
@@ -6157,12 +5811,14 @@ public class MainActivity extends AppCompatActivity {
         return sb.toString();
     }
 
-    private void mostrarPrimeMatchResultadoFlutuante(List<PrimeMatchResultadoGrupo> resultados, int saldo) {
+    private void mostrarPrimeMatchResultadoFlutuante(List<PrimeMatchResultadoGrupo> resultados, int saldo,
+                                                      int indice, int total) {
         if (primeMatchStage == null) {
             return;
         }
         TextView painel = new TextView(this);
-        painel.setText(formatarPrimeMatchCenaResultado(resultados, saldo));
+        painel.setText((total > 1 ? indice + "/" + total + "\n" : "")
+            + formatarPrimeMatchCenaResultado(resultados, saldo));
         painel.setTextSize(resultados.size() == 1 ? 16 : 14);
         painel.setTypeface(null, Typeface.BOLD);
         painel.setGravity(Gravity.CENTER);
@@ -6177,7 +5833,7 @@ public class MainActivity extends AppCompatActivity {
         painel.setAlpha(0f);
         painel.setScaleX(0.78f);
         painel.setScaleY(0.78f);
-        painel.setMaxLines(resultados.size() == 1 ? 4 : 6);
+        painel.setMaxLines(total > 1 ? 6 : 5);
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -6271,7 +5927,7 @@ public class MainActivity extends AppCompatActivity {
         return (destaque ? "PRIMO\n" : "")
                 + calculo
                 + (destaque
-                ? "\n" + saldo + " pontos • vira peça preta"
+                ? "\n" + saldo + " pontos • vira peça preta " + resultado.valorPreta
                 : " • " + saldo);
     }
 
@@ -6617,7 +6273,6 @@ public class MainActivity extends AppCompatActivity {
         mostrarPrimeMatchMarcaTexto(calculoMarcadas);
         mostrarPrimeMatchBombas(explosaoMarcadas);
         int[] paleta = primeMatchPaleta();
-        int maiorAtraso = 0;
         for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
             for (int c = 0; c < PRIME_MATCH_COLS; c++) {
                 if (!calculoMarcadas[r][c]) {
@@ -6629,7 +6284,6 @@ public class MainActivity extends AppCompatActivity {
                         ? Color.parseColor("#101217")
                         : paleta[Math.max(0, primeMatchColors[r][c]) % paleta.length];
                 int atraso = (r + c) * 28;
-                maiorAtraso = Math.max(maiorAtraso, atraso);
 
                 cell.animate().cancel();
                 cell.bringToFront();
@@ -6652,7 +6306,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        primeMatchGrid.postDelayed(aoTerminar, maiorAtraso + 1850L);
+        primeMatchGrid.postDelayed(aoTerminar, PRIME_MATCH_PREVIEW_MS);
     }
 
     private void animarPrimeMatchExplosao(boolean[][] marcadas, Runnable aoTerminar) {
@@ -7041,159 +6695,48 @@ public class MainActivity extends AppCompatActivity {
 
     private List<PrimeMatchGrupo> encontrarPrimeMatchGruposCombinacoes() {
         ArrayList<PrimeMatchGrupo> grupos = new ArrayList<>();
-        adicionarPrimeMatchGruposLineares(grupos, true);
-        adicionarPrimeMatchGruposLineares(grupos, false);
+        for (long mascara : mascarasPrimeMatchCombinacoes()) {
+            boolean[][] marcadas = decodificarPrimeMatchMascara(mascara);
+            int soma = 0;
+            int pretas = 0;
+            for (long bits = mascara; bits != 0; bits &= bits - 1) {
+                int cell = Long.numberOfTrailingZeros(bits);
+                int row = cell / PRIME_MATCH_COLS;
+                int col = cell % PRIME_MATCH_COLS;
+                soma = (int) Math.min(Integer.MAX_VALUE, (long) soma + primeMatchValues[row][col]);
+                if (primeMatchEhCorPreta(primeMatchColors[row][col])) pretas++;
+            }
+            grupos.add(new PrimeMatchGrupo(mascara, marcadas, soma, Long.bitCount(mascara), pretas));
+        }
         return grupos;
     }
 
-    private void adicionarPrimeMatchGruposLineares(ArrayList<PrimeMatchGrupo> grupos, boolean horizontal) {
-        int linhas = horizontal ? PRIME_MATCH_ROWS : PRIME_MATCH_COLS;
-        int tamanho = horizontal ? PRIME_MATCH_COLS : PRIME_MATCH_ROWS;
-        for (int linha = 0; linha < linhas; linha++) {
-            int inicio = 0;
-            while (inicio < tamanho) {
-                while (inicio < tamanho && !primeMatchPosicaoLinearOcupada(horizontal, linha, inicio)) {
-                    inicio++;
-                }
-                if (inicio >= tamanho) {
-                    break;
-                }
-
-                int fim = inicio;
-                int corBase = -1;
-                while (fim < tamanho && primeMatchPosicaoLinearOcupada(horizontal, linha, fim)) {
-                    int row = horizontal ? linha : fim;
-                    int col = horizontal ? fim : linha;
-                    int cor = primeMatchColors[row][col];
-                    if (!primeMatchEhCorPreta(cor)) {
-                        if (corBase < 0) {
-                            corBase = cor;
-                        } else if (corBase != cor) {
-                            break;
-                        }
-                    }
-                    fim++;
-                }
-
-                if (fim - inicio >= PRIME_MATCH_MIN_CHAIN) {
-                    int corGrupo = corBase < 0 ? PRIME_MATCH_COR_PRETA : corBase;
-                    grupos.add(criarPrimeMatchGrupoLinear(horizontal, linha, inicio, fim - 1, corGrupo));
-                }
-                inicio = Math.max(fim, inicio + 1);
+    private long[] mascarasPrimeMatchCombinacoes() {
+        int[] cores = new int[PRIME_MATCH_ROWS * PRIME_MATCH_COLS];
+        long ocupadas = 0;
+        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
+            for (int c = 0; c < PRIME_MATCH_COLS; c++) {
+                int index = r * PRIME_MATCH_COLS + c;
+                cores[index] = primeMatchColors[r][c];
+                if (primeMatchCelulaOcupada(r, c)) ocupadas |= 1L << index;
             }
         }
+        return matchGroupsNativo(cores, ocupadas);
     }
 
-    private boolean primeMatchPosicaoLinearOcupada(boolean horizontal, int linha, int posicao) {
-        int row = horizontal ? linha : posicao;
-        int col = horizontal ? posicao : linha;
-        return primeMatchCelulaOcupada(row, col);
-    }
-
-    private PrimeMatchGrupo criarPrimeMatchGrupoLinear(
-            boolean horizontal,
-            int linha,
-            int inicio,
-            int fim,
-            int corGrupo
-    ) {
-        boolean[][] grupoMarcado = new boolean[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
-        int soma = 0;
-        int removidas = 0;
-        int pretas = 0;
-        int ancoraPreta = -1;
-        int valorPreta = 0;
-        for (int pos = inicio; pos <= fim; pos++) {
-            int row = horizontal ? linha : pos;
-            int col = horizontal ? pos : linha;
-            grupoMarcado[row][col] = true;
-            soma += primeMatchValues[row][col];
-            removidas++;
-            if (primeMatchEhCorPreta(primeMatchColors[row][col])) {
-                pretas++;
-                if (primeMatchValues[row][col] > valorPreta) {
-                    valorPreta = primeMatchValues[row][col];
-                    ancoraPreta = row * PRIME_MATCH_COLS + col;
-                }
-            }
+    private boolean[][] decodificarPrimeMatchMascara(long mascara) {
+        boolean[][] marcadas = new boolean[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
+        for (long bits = mascara; bits != 0; bits &= bits - 1) {
+            int cell = Long.numberOfTrailingZeros(bits);
+            marcadas[cell / PRIME_MATCH_COLS][cell % PRIME_MATCH_COLS] = true;
         }
-        return new PrimeMatchGrupo(grupoMarcado, soma, removidas, corGrupo, pretas, ancoraPreta, valorPreta);
-    }
-
-    private int escolherPrimeMatchCorBaseGrupo(boolean[][] marcadas, int row, int col) {
-        int corInicial = primeMatchColors[row][col];
-        if (!primeMatchEhCorPreta(corInicial)) {
-            return corInicial;
-        }
-        int[] dr = new int[]{0, 0, -1, 1};
-        int[] dc = new int[]{-1, 1, 0, 0};
-        for (int d = 0; d < dr.length; d++) {
-            int nr = row + dr[d];
-            int nc = col + dc[d];
-            while (nr >= 0 && nr < PRIME_MATCH_ROWS && nc >= 0 && nc < PRIME_MATCH_COLS && marcadas[nr][nc]) {
-                int cor = primeMatchColors[nr][nc];
-                if (!primeMatchEhCorPreta(cor)) {
-                    return cor;
-                }
-                nr += dr[d];
-                nc += dc[d];
-            }
-        }
-        return corInicial;
+        return marcadas;
     }
 
     private boolean[][] encontrarPrimeMatchCombinacoes() {
-        boolean[][] marcadas = new boolean[PRIME_MATCH_ROWS][PRIME_MATCH_COLS];
-
-        for (int r = 0; r < PRIME_MATCH_ROWS; r++) {
-            for (int inicio = 0; inicio < PRIME_MATCH_COLS; inicio++) {
-                int corBase = -1;
-                for (int fim = inicio; fim < PRIME_MATCH_COLS; fim++) {
-                    if (primeMatchValues[r][fim] == 0 || primeMatchColors[r][fim] < 0) {
-                        break;
-                    }
-                    int cor = primeMatchColors[r][fim];
-                    if (!primeMatchEhCorPreta(cor)) {
-                        if (corBase < 0) {
-                            corBase = cor;
-                        } else if (corBase != cor) {
-                            break;
-                        }
-                    }
-                    if (fim - inicio + 1 >= PRIME_MATCH_MIN_CHAIN) {
-                        for (int c = inicio; c <= fim; c++) {
-                            marcadas[r][c] = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        for (int c = 0; c < PRIME_MATCH_COLS; c++) {
-            for (int inicio = 0; inicio < PRIME_MATCH_ROWS; inicio++) {
-                int corBase = -1;
-                for (int fim = inicio; fim < PRIME_MATCH_ROWS; fim++) {
-                    if (primeMatchValues[fim][c] == 0 || primeMatchColors[fim][c] < 0) {
-                        break;
-                    }
-                    int cor = primeMatchColors[fim][c];
-                    if (!primeMatchEhCorPreta(cor)) {
-                        if (corBase < 0) {
-                            corBase = cor;
-                        } else if (corBase != cor) {
-                            break;
-                        }
-                    }
-                    if (fim - inicio + 1 >= PRIME_MATCH_MIN_CHAIN) {
-                        for (int r = inicio; r <= fim; r++) {
-                            marcadas[r][c] = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        return marcadas;
+        long marcadas = 0;
+        for (long grupo : mascarasPrimeMatchCombinacoes()) marcadas |= grupo;
+        return decodificarPrimeMatchMascara(marcadas);
     }
 
     private void atualizarPrimeMatchPlacar() {
@@ -7245,25 +6788,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int calcularPrimeMatchPercentual(int valor) {
-        if (primeMatchTarget <= 0) {
-            return 0;
-        }
-        long percentual = (long) valor * 100L / primeMatchTarget;
-        return (int) Math.min(100L, Math.max(0L, percentual));
+        return matchPercentNativo(valor, primeMatchTarget);
     }
 
     private int calcularPrimeMatchEstrelas(int valor) {
-        int percentual = calcularPrimeMatchPercentual(valor);
-        if (percentual >= 100) {
-            return 3;
-        }
-        if (percentual >= 66) {
-            return 2;
-        }
-        if (percentual >= 33) {
-            return 1;
-        }
-        return 0;
+        return matchStarsNativo(valor, primeMatchTarget);
     }
 
     private String formatarPrimeMatchEstrelas(int estrelas) {
@@ -7327,19 +6856,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class PrimeRunnerView extends View {
+        private final android.graphics.Bitmap[] veiculos = carregarVeiculos("bicycle", "motorcycle", "car");
+        private final android.graphics.Bitmap estrada = carregarImagemArcade("road.jpg");
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final RectF runnerRect = new RectF();
-        private final RectF numeroRect = new RectF();
         private final RectF chipRect = new RectF();
         private final ArrayList<PrimeRunnerNumero> numeros = new ArrayList<>();
         private long lastFrameMs;
+        private long playTimeMs;
         private long nextSpawnMs;
+        private int previousNumber;
         private long pulseUntilMs;
-        private float scoreFloat;
+        private int pontuacao;
         private float jumpOffset;
-        private float jumpVelocity;
+        private long jumpStartedMs;
         private int bestScore;
         private boolean gameOver;
+        private boolean running;
         private String pulseText = "";
         private int pulseColor = Color.WHITE;
 
@@ -7355,13 +6887,23 @@ public class MainActivity extends AppCompatActivity {
         void reiniciarPartida() {
             numeros.clear();
             lastFrameMs = 0;
-            nextSpawnMs = System.currentTimeMillis() + 1200;
+            playTimeMs = 0;
+            nextSpawnMs = ArcadeRules.START_MS;
+            previousNumber = 0;
             pulseUntilMs = 0;
-            scoreFloat = 0f;
+            pontuacao = 0;
             jumpOffset = 0f;
-            jumpVelocity = 0f;
+            jumpStartedMs = -1;
             gameOver = false;
+            running = false;
             pulseText = "";
+            invalidate();
+        }
+
+        void pausar() {
+            running = false;
+            lastFrameMs = 0;
+            salvarRecorde();
             invalidate();
         }
 
@@ -7377,11 +6919,7 @@ public class MainActivity extends AppCompatActivity {
                 getParent().requestDisallowInterceptTouchEvent(true);
             }
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                if (gameOver) {
-                    reiniciarPartida();
-                } else {
-                    pular();
-                }
+                tocarPista();
                 return true;
             }
             if (event.getActionMasked() == MotionEvent.ACTION_UP
@@ -7403,84 +6941,96 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            long now = System.currentTimeMillis();
+            long now = android.os.SystemClock.uptimeMillis();
             if (lastFrameMs == 0) {
                 lastFrameMs = now;
             }
-            float dt = Math.min(0.033f, (now - lastFrameMs) / 1000f);
+            long deltaMs = Math.min(ArcadeRules.MAX_FRAME_MS, Math.max(0, now - lastFrameMs));
             lastFrameMs = now;
 
-            if (!gameOver) {
-                atualizar(dt, now, w, h);
+            if (running && !gameOver) {
+                playTimeMs += deltaMs;
+                atualizar(deltaMs / 1000f, now, w);
             }
 
             desenharFundo(canvas, w, h);
             desenharPista(canvas, w, h, now);
             desenharNumeros(canvas, h);
-            desenharCorredor(canvas, h);
+            desenharCorredor(canvas, h, now);
             desenharPlacar(canvas);
             desenharPulso(canvas, w, now);
 
             if (gameOver) {
                 desenharFim(canvas, w, h);
-            } else {
+            } else if (running) {
                 postInvalidateOnAnimation();
+            } else {
+                desenharPausaArcade(canvas, w, h, playTimeMs > 0, paint);
             }
         }
 
-        private void atualizar(float dt, long now, int w, int h) {
-            scoreFloat += dt * 24f;
-
-            if (jumpOffset > 0f || jumpVelocity > 0f) {
-                jumpOffset += jumpVelocity * dt;
-                jumpVelocity -= dpUi(1850) * dt;
-                if (jumpOffset < 0f) {
-                    jumpOffset = 0f;
-                    jumpVelocity = 0f;
-                }
+        private void atualizar(float dt, long now, int w) {
+            float density = getResources().getDisplayMetrics().density;
+            if (jumpStartedMs >= 0) {
+                long elapsed = playTimeMs - jumpStartedMs;
+                jumpOffset = (float) arcadeJumpHeightNativo(elapsed / 1000.0) * density;
+                if (elapsed > 0 && jumpOffset <= 0) jumpStartedMs = -1;
             }
 
-            if (now >= nextSpawnMs) {
-                boolean primo = primeMatchRandom.nextInt(100) < 42;
-                numeros.add(new PrimeRunnerNumero(w + dpUi(70), gerarValorArcadePrimo(primo), primo));
-                long intervaloBase = 1380 - Math.min(430, (long) (scoreFloat * 0.28f));
-                nextSpawnMs = now + Math.max(920, intervaloBase) + primeMatchRandom.nextInt(650);
+            if (playTimeMs >= nextSpawnMs) {
+                int[] spawn = arcadeSpawnNativo(false, pontuacao, primeMatchRandom.nextInt(), previousNumber);
+                previousNumber = spawn[0];
+                numeros.add(new PrimeRunnerNumero(w + ArcadeRules.SPAWN_MARGIN * density, previousNumber, spawn[1] != 0));
+                nextSpawnMs = playTimeMs + spawn[3];
             }
 
-            float velocidade = dpUi(220) + Math.min(dpUi(135), scoreFloat * 0.46f);
-            float raio = dpUi(26);
-            float chao = h - dpUi(58);
-            float corredorX = dpUi(72);
-            runnerRect.set(corredorX - dpUi(19), chao - dpUi(48) - jumpOffset, corredorX + dpUi(19), chao - dpUi(5) - jumpOffset);
+            float velocidade = (float) arcadeRunnerSpeedNativo(pontuacao) * density;
+            double baseY = ArcadeRules.FLOOR_Y + ArcadeRules.RUNNER_CENTER;
 
             for (int i = numeros.size() - 1; i >= 0; i--) {
                 PrimeRunnerNumero numero = numeros.get(i);
                 numero.x -= velocidade * dt;
-                numeroRect.set(numero.x - dpUi(20), chao - dpUi(48), numero.x + dpUi(20), chao - dpUi(7));
-
-                if (numero.x < -dpUi(40)) {
+                if (numero.x < -ArcadeRules.SPAWN_MARGIN * density) {
                     numeros.remove(i);
                     continue;
                 }
 
-                if (RectF.intersects(runnerRect, numeroRect)) {
+                if (arcadeCollidesNativo(ArcadeRules.RUNNER_BOX, ArcadeRules.RUNNER_X, baseY + jumpOffset / density,
+                    ArcadeRules.RUNNER_NUMBER, numero.x / density, baseY)) {
                     if (numero.prime) {
-                        int bonus = numero.value * 2 + 25;
-                        scoreFloat += bonus;
-                        mostrarPulso("Primo +" + bonus, Color.parseColor("#FFE08A"), now);
+                        int bonus = arcadePoints(numero.value, numero.prime, true);
+                        pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
+                        mostrarPulso("Primo " + numero.value + "  +" + bonus, Color.parseColor("#FFE08A"), now);
                         tocarPrimeMatchSom(primeMatchSoundPrime);
                         numeros.remove(i);
                     } else {
                         encerrarCorrida(now);
                         return;
                     }
+                } else if (!numero.prime && arcadeRunnerPassedNativo(numero.x / density)) {
+                    int pontos = arcadePoints(numero.value, false, false);
+                    pontuacao = arcadeAddScoreNativo(pontuacao, pontos);
+                    mostrarPulso("Pulou " + numero.value + "  +" + pontos, Color.parseColor("#A7F3D0"), now);
+                    numeros.remove(i);
                 }
             }
         }
 
+        private void tocarPista() {
+            if (gameOver) {
+                reiniciarPartida();
+            }
+            if (!running) {
+                running = true;
+                lastFrameMs = 0;
+            }
+            pular();
+            invalidate();
+        }
+
         private void pular() {
-            if (jumpOffset <= dpUi(2)) {
-                jumpVelocity = dpUi(850);
+            if (jumpStartedMs < 0) {
+                jumpStartedMs = playTimeMs;
                 tocarPrimeMatchSom(primeMatchSoundTap);
             }
         }
@@ -7493,7 +7043,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void salvarRecorde() {
-            int atual = Math.max(0, (int) scoreFloat);
+            int atual = Math.max(0, pontuacao);
             if (atual > bestScore) {
                 bestScore = atual;
                 getSharedPreferences(PREFS_PRIME_RUNNER, MODE_PRIVATE)
@@ -7510,6 +7060,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharFundo(Canvas canvas, int w, int h) {
+            if (desenharFotoArcade(canvas, estrada, w, h,
+                arcadeVehicle(arcadeStage(pontuacao, false)), paint)) return;
             paint.setShader(new LinearGradient(0, 0, 0, h,
                     new int[]{Color.parseColor("#184E77"), Color.parseColor("#168AAD"), Color.parseColor("#D9ED92")},
                     null,
@@ -7519,19 +7071,20 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharPista(Canvas canvas, int w, int h, long now) {
-            float chao = h - dpUi(58);
-            paint.setColor(Color.parseColor("#264653"));
-            canvas.drawRoundRect(new RectF(dpUi(10), chao, w - dpUi(10), h - dpUi(16)), dpUi(18), dpUi(18), paint);
+            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
+            paint.setColor(0xCE131F27);
+            canvas.drawRect(0, chao, w, h, paint);
             paint.setColor(withAlpha(Color.WHITE, 80));
             for (int i = 0; i < 9; i++) {
-                float x = ((now / 6f) + i * dpUi(74)) % (w + dpUi(74)) - dpUi(40);
+                float x = ((i * dpUi(74) - (now % 60000L) / 6f) % (w + dpUi(74))
+                    + w + dpUi(74)) % (w + dpUi(74)) - dpUi(40);
                 canvas.drawRoundRect(new RectF(x, chao + dpUi(22), x + dpUi(34), chao + dpUi(26)), dpUi(4), dpUi(4), paint);
             }
         }
 
         private void desenharNumeros(Canvas canvas, int h) {
             float raio = dpUi(26);
-            float chao = h - dpUi(58);
+            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
             for (PrimeRunnerNumero numero : numeros) {
                 int cor = numero.prime ? Color.parseColor("#2DD4BF") : Color.parseColor("#F97373");
                 paint.setStyle(Paint.Style.FILL);
@@ -7554,13 +7107,21 @@ public class MainActivity extends AppCompatActivity {
             paint.setTypeface(Typeface.DEFAULT);
         }
 
-        private void desenharCorredor(Canvas canvas, int h) {
+        private void desenharCorredor(Canvas canvas, int h, long now) {
             float raio = dpUi(25);
-            float chao = h - dpUi(58);
-            float x = dpUi(72);
+            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
+            float x = dpUi(ArcadeRules.RUNNER_X);
             float y = chao - raio - jumpOffset;
             paint.setColor(withAlpha(Color.BLACK, 60));
             canvas.drawOval(new RectF(x - dpUi(24), chao - dpUi(7), x + dpUi(24), chao + dpUi(3)), paint);
+            int tier = arcadeVehicle(arcadeStage(pontuacao, false));
+            if (tier > 0 && !gameOver) desenharEscapeArcade(canvas, x - dpUi(37), y, now, false, paint);
+            paint.setColor(Color.WHITE);
+            RectF area = new RectF(x - dpUi(41), y - dpUi(24), x + dpUi(41), chao - jumpOffset);
+            if (desenharVeiculo(canvas, veiculos[tier], area, paint)) {
+                desenharRodas(canvas, veiculos[tier], area, tier, now);
+                return;
+            }
             paint.setColor(Color.parseColor("#1D4ED8"));
             paint.setShadowLayer(dpUi(12), 0, dpUi(3), withAlpha(Color.parseColor("#38BDF8"), 160));
             canvas.drawRoundRect(new RectF(x - raio, y - raio, x + raio, y + raio), dpUi(16), dpUi(16), paint);
@@ -7571,8 +7132,28 @@ public class MainActivity extends AppCompatActivity {
             canvas.drawCircle(x - dpUi(7), y + dpUi(7), dpUi(7), paint);
         }
 
+        private void desenharRodas(Canvas canvas, android.graphics.Bitmap sprite, RectF area, int tier, long now) {
+            float scale = Math.min(area.width() / sprite.getWidth(), area.height() / sprite.getHeight());
+            float width = sprite.getWidth() * scale;
+            float height = sprite.getHeight() * scale;
+            float left = area.centerX() - width / 2f;
+            float y = area.bottom - height * (tier == 2 ? 0.30f : 0.34f);
+            paint.setColor(0x4DFFFFFF);
+            paint.setStrokeWidth(dpUi(1));
+            for (int i = 0; i < 2; i++) {
+                float hub = i == 0 ? (tier == 1 ? 0.23f : 0.18f) : (tier == 1 ? 0.81f : 0.77f);
+                float x = left + width * hub;
+                canvas.save();
+                canvas.rotate((now % 350L) * 360f / 350f, x, y);
+                float raio = width * 0.085f;
+                canvas.drawLine(x - raio, y, x + raio, y, paint);
+                canvas.drawLine(x, y - raio, x, y + raio, paint);
+                canvas.restore();
+            }
+        }
+
         private void desenharPlacar(Canvas canvas) {
-            desenharChip(canvas, "Pontos " + formatarPontuacaoArcade((int) scoreFloat), dpUi(12), dpUi(12), Color.parseColor("#0F766E"));
+            desenharChip(canvas, "Pontos " + formatarPontuacaoArcade(pontuacao), dpUi(12), dpUi(12), Color.parseColor("#0F766E"));
             desenharChip(canvas, "Recorde " + formatarPontuacaoArcade(bestScore), dpUi(12), dpUi(54), Color.parseColor("#1D4ED8"));
         }
 
@@ -7647,27 +7228,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class PrimeShooterView extends View {
+        private final android.graphics.Bitmap[] veiculos = carregarVeiculos("airplane", "rocket", "spaceship");
+        private final android.graphics.Bitmap espaco = carregarImagemArcade("space.jpg");
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path shipPath = new Path();
-        private final RectF itemRect = new RectF();
-        private final RectF shotRect = new RectF();
-        private final RectF shipRect = new RectF();
         private final RectF panelRect = new RectF();
-        private final RectF fireButtonRect = new RectF();
         private final ArrayList<PrimeShooterItem> itens = new ArrayList<>();
         private final ArrayList<PrimeShooterShot> tiros = new ArrayList<>();
         private long lastFrameMs;
+        private long playTimeMs;
         private long nextSpawnMs;
+        private int previousNumber;
         private long nextShotMs;
         private long pulseUntilMs;
         private long boostUntilMs;
+        private long hitGraceUntilMs;
         private long lastSaveMs;
         private float shipX;
-        private float scoreFloat;
+        private int pontuacao;
         private int bestScore;
-        private int lives = 3;
+        private int lives = ArcadeRules.LIVES;
         private boolean gameOver;
+        private boolean running;
         private boolean fireHeld;
+        private float twoFingerStartX;
+        private float twoFingerStartY;
         private String pulseText = "";
         private int pulseColor = Color.WHITE;
 
@@ -7679,6 +7264,8 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences prefs = getSharedPreferences(PREFS_PRIME_SHOOTER, MODE_PRIVATE);
             bestScore = prefs.getInt(KEY_PS_BEST_SCORE, 0);
             reiniciarComPontuacao(prefs.getInt(KEY_PS_LAST_SCORE, 0));
+            lives = Math.max(1, Math.min(ArcadeRules.LIVES, prefs.getInt(KEY_PS_LIVES, ArcadeRules.LIVES)));
+            boostUntilMs = Math.max(0, Math.min(ArcadeRules.SHIELD_MS, prefs.getInt(KEY_PS_SHIELD_MS, 0)));
         }
 
         void reiniciarDoZero() {
@@ -7687,29 +7274,43 @@ public class MainActivity extends AppCompatActivity {
         }
 
         void salvarProgresso() {
-            int atual = Math.max(0, (int) scoreFloat);
+            int atual = Math.max(0, pontuacao);
             if (atual > bestScore) {
                 bestScore = atual;
             }
             getSharedPreferences(PREFS_PRIME_SHOOTER, MODE_PRIVATE)
                     .edit()
                     .putInt(KEY_PS_BEST_SCORE, bestScore)
-                    .putInt(KEY_PS_LAST_SCORE, atual)
+                    .putInt(KEY_PS_LAST_SCORE, gameOver ? 0 : atual)
+                    .putInt(KEY_PS_LIVES, gameOver ? ArcadeRules.LIVES : lives)
+                    .putInt(KEY_PS_SHIELD_MS, gameOver ? 0 : (int) Math.max(0, boostUntilMs - playTimeMs))
                     .apply();
-            lastSaveMs = System.currentTimeMillis();
+            lastSaveMs = android.os.SystemClock.uptimeMillis();
+        }
+
+        void pausar() {
+            running = false;
+            fireHeld = false;
+            lastFrameMs = 0;
+            salvarProgresso();
+            invalidate();
         }
 
         private void reiniciarComPontuacao(int pontuacaoInicial) {
             itens.clear();
             tiros.clear();
             lastFrameMs = 0;
-            nextSpawnMs = 0;
+            playTimeMs = 0;
+            previousNumber = 0;
+            nextSpawnMs = ArcadeRules.START_MS;
             nextShotMs = 0;
             pulseUntilMs = 0;
             boostUntilMs = 0;
-            scoreFloat = Math.max(0, pontuacaoInicial);
-            lives = 3;
+            hitGraceUntilMs = 0;
+            pontuacao = Math.max(0, pontuacaoInicial);
+            lives = ArcadeRules.LIVES;
             gameOver = false;
+            running = false;
             fireHeld = false;
             pulseText = "";
             invalidate();
@@ -7734,35 +7335,52 @@ public class MainActivity extends AppCompatActivity {
             if (getParent() != null) {
                 getParent().requestDisallowInterceptTouchEvent(true);
             }
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
                 if (gameOver) {
                     reiniciarDoZero();
-                    return true;
                 }
-                if (toqueNoBotaoTiro(event.getX(), event.getY()) || event.getY() < getHeight() * 0.42f) {
-                    fireHeld = true;
-                    atirar(true);
-                } else {
-                    fireHeld = false;
-                    moverNave(event.getX());
+                if (!running) {
+                    running = true;
+                    lastFrameMs = 0;
                 }
-                return true;
             }
-            if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-                if (fireHeld) {
-                    atirar(false);
-                } else {
-                    moverNave(event.getX());
-                }
-                return true;
-            }
-            if (event.getActionMasked() == MotionEvent.ACTION_UP
-                    || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 fireHeld = false;
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(false);
                 }
                 return true;
+            }
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE
+                    || action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
+                float x = 0;
+                float y = 0;
+                int count = 0;
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    if (action == MotionEvent.ACTION_POINTER_UP && i == event.getActionIndex()) continue;
+                    x += event.getX(i);
+                    y += event.getY(i);
+                    count++;
+                }
+                if (count == 0) return true;
+                x /= count;
+                y /= count;
+                if (action != MotionEvent.ACTION_MOVE) {
+                    fireHeld = false;
+                    if (count == 2) {
+                        twoFingerStartX = x;
+                        twoFingerStartY = y;
+                    }
+                }
+                if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_DOWN) {
+                    moverNave(x);
+                }
+                if (action == MotionEvent.ACTION_MOVE && count == 2 && !fireHeld
+                        && Math.hypot(x - twoFingerStartX, y - twoFingerStartY) >= dpUi(4)) {
+                    fireHeld = true;
+                    atirar(true);
+                }
             }
             return true;
         }
@@ -7776,116 +7394,113 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            long now = System.currentTimeMillis();
+            long now = android.os.SystemClock.uptimeMillis();
             if (lastFrameMs == 0) {
                 lastFrameMs = now;
             }
-            float dt = Math.min(0.033f, (now - lastFrameMs) / 1000f);
+            long deltaMs = Math.min(ArcadeRules.MAX_FRAME_MS, Math.max(0, now - lastFrameMs));
             lastFrameMs = now;
 
-            if (!gameOver) {
-                atualizar(dt, now, w, h);
+            if (running && !gameOver) {
+                playTimeMs += deltaMs;
+                atualizar(deltaMs / 1000f, now, w, h);
             }
 
             desenharEspaco(canvas, w, h, now);
             desenharTiros(canvas);
             desenharItens(canvas);
             desenharNave(canvas, w, h, now);
-            desenharBotaoTiro(canvas, w, h);
+            desenharFaixaControle(canvas, w, h);
             desenharPlacar(canvas, w, now);
             desenharPulso(canvas, w, now);
 
             if (gameOver) {
                 desenharFim(canvas, w, h);
-            } else {
+            } else if (running) {
                 postInvalidateOnAnimation();
+            } else {
+                desenharPausaArcade(canvas, w, h,
+                    playTimeMs > 0 || pontuacao > 0 || lives < ArcadeRules.LIVES, paint);
             }
         }
 
         private void atualizar(float dt, long now, int w, int h) {
-            float setor = 1f + scoreFloat / 1200f;
-            scoreFloat += dt * (10f + setor * 1.8f);
+            float density = getResources().getDisplayMetrics().density;
 
             if (fireHeld) {
                 atirar(false);
             }
 
-            if (now >= nextSpawnMs) {
-                boolean primo = primeMatchRandom.nextInt(100) < 38;
-                int faixa = Math.max(1, w - dpUi(64));
-                float x = dpUi(32) + primeMatchRandom.nextInt(faixa);
-                float speed = dpUi(82) + setor * dpUi(8) + primeMatchRandom.nextInt(Math.max(1, dpUi(34)));
-                itens.add(new PrimeShooterItem(x, -dpUi(30), speed, gerarValorArcadePrimo(primo), primo));
-                long intervalo = Math.max(360, 820 - (long) (setor * 34)) + primeMatchRandom.nextInt(260);
-                nextSpawnMs = now + intervalo;
+            if (playTimeMs >= nextSpawnMs) {
+                int[] spawn = arcadeSpawnNativo(true, pontuacao, primeMatchRandom.nextInt(), previousNumber);
+                previousNumber = spawn[0];
+                float margem = Math.min(w / 2f, ArcadeRules.SHIP_MARGIN * density);
+                float x = margem + (w - 2 * margem) * spawn[4] / ArcadeRules.LANE_MAX;
+                itens.add(new PrimeShooterItem(x, -ArcadeRules.SPAWN_MARGIN * density,
+                    spawn[2] * density, previousNumber, spawn[1] != 0));
+                nextSpawnMs = playTimeMs + spawn[3];
             }
 
             for (int i = tiros.size() - 1; i >= 0; i--) {
                 PrimeShooterShot tiro = tiros.get(i);
-                tiro.y -= dpUi(420) * dt;
-                if (tiro.y < -dpUi(20)) {
+                tiro.y -= ArcadeRules.SHOT_SPEED * density * dt;
+                if (tiro.y < -ArcadeRules.SPAWN_MARGIN * density) {
                     tiros.remove(i);
                     continue;
                 }
 
-                shotRect.set(tiro.x - dpUi(7), tiro.y - dpUi(32), tiro.x + dpUi(7), tiro.y + dpUi(12));
-                boolean tiroRemovido = false;
                 for (int j = itens.size() - 1; j >= 0; j--) {
                     PrimeShooterItem item = itens.get(j);
-                    float raio = item.prime ? dpUi(22) : dpUi(20);
-                    itemRect.set(item.x - raio, item.y - raio, item.x + raio, item.y + raio);
-                    if (RectF.intersects(shotRect, itemRect)) {
+                    int box = item.prime ? ArcadeRules.SPACE_PRIME : ArcadeRules.SPACE_COMPOSITE;
+                    if (arcadeCollidesNativo(ArcadeRules.SHOT_BOX, tiro.x / density, (h - tiro.y) / density,
+                        box, item.x / density, (h - item.y) / density)) {
                         if (item.prime) {
-                            scoreFloat = Math.max(0f, scoreFloat - 20f);
                             mostrarPulso("Primo perdido", Color.parseColor("#FCA5A5"), now);
                             tocarPrimeMatchSom(primeMatchSoundComposite);
                         } else {
-                            int bonus = item.value + 25;
-                            scoreFloat += bonus;
-                            mostrarPulso("Composto +" + bonus, Color.parseColor("#93C5FD"), now);
+                            int bonus = arcadePoints(item.value, item.prime, false);
+                            pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
+                            mostrarPulso("Composto " + item.value + "  +" + bonus, Color.parseColor("#93C5FD"), now);
                             tocarPrimeMatchSom(primeMatchSoundCombo);
                         }
                         itens.remove(j);
                         tiros.remove(i);
-                        tiroRemovido = true;
                         break;
                     }
                 }
-                if (tiroRemovido) {
-                    continue;
-                }
             }
 
-            float shipTop = h - dpUi(92);
-            shipRect.set(shipX - dpUi(28), shipTop - dpUi(22), shipX + dpUi(28), shipTop + dpUi(36));
             for (int i = itens.size() - 1; i >= 0; i--) {
                 PrimeShooterItem item = itens.get(i);
                 item.y += item.speed * dt;
-                float raio = item.prime ? dpUi(22) : dpUi(20);
-                itemRect.set(item.x - raio, item.y - raio, item.x + raio, item.y + raio);
-
-                if (item.y - raio > h + dpUi(30)) {
+                if (item.y > h + ArcadeRules.SPAWN_MARGIN * density) {
                     itens.remove(i);
                     continue;
                 }
 
-                if (RectF.intersects(shipRect, itemRect)) {
-                    if (item.prime) {
-                        int bonus = item.value * 2 + 35;
-                        scoreFloat += bonus;
-                        boostUntilMs = now + 3500;
-                        mostrarPulso("Resgate +" + bonus, Color.parseColor("#A7F3D0"), now);
+                int box = item.prime ? ArcadeRules.SPACE_PRIME : ArcadeRules.SPACE_COMPOSITE;
+                if (arcadeCollidesNativo(ArcadeRules.SHIP_BOX, shipX / density, ArcadeRules.SHIP_Y,
+                    box, item.x / density, (h - item.y) / density)) {
+                    int evento = arcadeFlightContactNativo(item.prime,
+                        playTimeMs < boostUntilMs, playTimeMs < hitGraceUntilMs);
+                    if (evento == ArcadeRules.RESCUE) {
+                        int bonus = arcadePoints(item.value, item.prime, true);
+                        pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
+                        boostUntilMs = playTimeMs + ArcadeRules.SHIELD_MS;
+                        mostrarPulso("Resgate " + item.value + "  +" + bonus, Color.parseColor("#A7F3D0"), now);
                         tocarPrimeMatchSom(primeMatchSoundPrime);
-                    } else if (now < boostUntilMs) {
-                        scoreFloat += 12;
+                    } else if (evento == ArcadeRules.SHIELD) {
                         mostrarPulso("Escudo ativo", Color.parseColor("#BAE6FD"), now);
                         tocarPrimeMatchSom(primeMatchSoundPower);
-                    } else {
+                    } else if (evento == ArcadeRules.DAMAGE) {
                         lives--;
+                        hitGraceUntilMs = playTimeMs + ArcadeRules.HIT_GRACE_MS;
                         mostrarPulso("Dano", Color.parseColor("#FDBA74"), now);
                         tocarPrimeMatchSom(primeMatchSoundComposite);
                         if (lives <= 0) {
                             encerrarVoo(now);
+                            itens.remove(i);
+                            return;
                         }
                     }
                     itens.remove(i);
@@ -7898,27 +7513,17 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void moverNave(float x) {
-            shipX = Math.max(dpUi(36), Math.min(getWidth() - dpUi(36), x));
+            float margem = Math.min(getWidth() / 2f, dpUi(ArcadeRules.SHIP_MARGIN));
+            shipX = Math.max(margem, Math.min(getWidth() - margem, x));
             invalidate();
         }
 
-        private boolean toqueNoBotaoTiro(float x, float y) {
-            atualizarBotaoTiroRect(getWidth(), getHeight());
-            return fireButtonRect.contains(x, y);
-        }
-
-        private void atualizarBotaoTiroRect(int w, int h) {
-            float size = dpUi(64);
-            fireButtonRect.set(w - size - dpUi(16), h - size - dpUi(18), w - dpUi(16), h - dpUi(18));
-        }
-
         private void atirar(boolean tocarSom) {
-            long now = System.currentTimeMillis();
-            if (now < nextShotMs || gameOver) {
+            if (playTimeMs < nextShotMs || gameOver || !running) {
                 return;
             }
-            tiros.add(new PrimeShooterShot(shipX, getHeight() - dpUi(98)));
-            nextShotMs = now + 185;
+            tiros.add(new PrimeShooterShot(shipX, getHeight() - dpUi(ArcadeRules.SHIP_Y + ArcadeRules.SHOT_OFFSET)));
+            nextShotMs = playTimeMs + ArcadeRules.SHOT_MS;
             if (tocarSom) {
                 tocarPrimeMatchSom(primeMatchSoundTap);
             }
@@ -7938,6 +7543,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharEspaco(Canvas canvas, int w, int h, long now) {
+            if (desenharFotoArcade(canvas, espaco, w, h,
+                arcadeVehicle(arcadeStage(pontuacao, true)), paint)) return;
             paint.setShader(new LinearGradient(0, 0, 0, h,
                     new int[]{Color.parseColor("#080F2E"), Color.parseColor("#1E1B4B"), Color.parseColor("#312E81")},
                     null,
@@ -7952,6 +7559,17 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        private void desenharFaixaControle(Canvas canvas, int w, int h) {
+            float top = h - dpUi(ArcadeRules.CONTROL_HEIGHT);
+            paint.setColor(0xB0101C28);
+            canvas.drawRect(0, top, w, h, paint);
+            paint.setColor(0x3867E8F9);
+            canvas.drawRect(0, top, w, top + dpUi(1), paint);
+            paint.setColor(0x88FFFFFF);
+            canvas.drawRoundRect(w / 2f - dpUi(20), h - dpUi(24),
+                w / 2f + dpUi(20), h - dpUi(21), dpUi(2), dpUi(2), paint);
+        }
+
         private void desenharTiros(Canvas canvas) {
             paint.setShader(null);
             paint.setColor(Color.parseColor("#FDE68A"));
@@ -7963,26 +7581,6 @@ public class MainActivity extends AppCompatActivity {
                 paint.setColor(Color.parseColor("#FDE68A"));
             }
             paint.clearShadowLayer();
-        }
-
-        private void desenharBotaoTiro(Canvas canvas, int w, int h) {
-            atualizarBotaoTiroRect(w, h);
-            int corBase = fireHeld ? Color.parseColor("#F97316") : Color.parseColor("#DC2626");
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(withAlpha(Color.BLACK, 75));
-            canvas.drawCircle(fireButtonRect.centerX() + dpUi(2), fireButtonRect.centerY() + dpUi(4), fireButtonRect.width() / 2f, paint);
-            paint.setColor(corBase);
-            paint.setShadowLayer(dpUi(13), 0, dpUi(2), withAlpha(corBase, 170));
-            canvas.drawCircle(fireButtonRect.centerX(), fireButtonRect.centerY(), fireButtonRect.width() / 2f, paint);
-            paint.clearShadowLayer();
-            paint.setColor(Color.parseColor("#FDE68A"));
-            float cx = fireButtonRect.centerX();
-            float cy = fireButtonRect.centerY();
-            canvas.drawRoundRect(new RectF(cx - dpUi(4), cy - dpUi(23), cx + dpUi(4), cy + dpUi(17)), dpUi(4), dpUi(4), paint);
-            canvas.drawRoundRect(new RectF(cx - dpUi(17), cy - dpUi(10), cx - dpUi(9), cy + dpUi(15)), dpUi(4), dpUi(4), paint);
-            canvas.drawRoundRect(new RectF(cx + dpUi(9), cy - dpUi(10), cx + dpUi(17), cy + dpUi(15)), dpUi(4), dpUi(4), paint);
-            paint.setColor(Color.WHITE);
-            canvas.drawCircle(cx, cy - dpUi(24), dpUi(5), paint);
         }
 
         private void desenharItens(Canvas canvas) {
@@ -8008,27 +7606,26 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharNave(Canvas canvas, int w, int h, long now) {
-            float baseY = h - dpUi(70);
+            float baseY = h - dpUi(ArcadeRules.SHIP_Y);
             float size = dpUi(34);
-            boolean boost = now < boostUntilMs;
+            boolean boost = playTimeMs < boostUntilMs;
             paint.setColor(withAlpha(Color.BLACK, 75));
             canvas.drawOval(new RectF(shipX - dpUi(30), baseY + dpUi(24), shipX + dpUi(30), baseY + dpUi(34)), paint);
+            if (!gameOver) desenharEscapeArcade(canvas, shipX, baseY + dpUi(30), now, true, paint);
 
-            shipPath.reset();
-            shipPath.moveTo(shipX, baseY - size);
-            shipPath.lineTo(shipX - size * 0.82f, baseY + size * 0.72f);
-            shipPath.lineTo(shipX, baseY + size * 0.35f);
-            shipPath.lineTo(shipX + size * 0.82f, baseY + size * 0.72f);
-            shipPath.close();
-            paint.setColor(boost ? Color.parseColor("#67E8F9") : Color.parseColor("#60A5FA"));
-            paint.setShadowLayer(dpUi(14), 0, dpUi(3), withAlpha(Color.parseColor("#38BDF8"), 170));
-            canvas.drawPath(shipPath, paint);
-            paint.clearShadowLayer();
             paint.setColor(Color.WHITE);
-            canvas.drawCircle(shipX, baseY - dpUi(7), dpUi(7), paint);
-            paint.setColor(Color.parseColor("#F97316"));
-            canvas.drawCircle(shipX - dpUi(10), baseY + dpUi(21), dpUi(5), paint);
-            canvas.drawCircle(shipX + dpUi(10), baseY + dpUi(21), dpUi(5), paint);
+            int tier = arcadeVehicle(arcadeStage(pontuacao, true));
+            if (!desenharVeiculo(canvas, veiculos[tier],
+                new RectF(shipX - dpUi(36), baseY - dpUi(43), shipX + dpUi(36), baseY + dpUi(29)), paint)) {
+                shipPath.reset();
+                shipPath.moveTo(shipX, baseY - size);
+                shipPath.lineTo(shipX - size * 0.82f, baseY + size * 0.72f);
+                shipPath.lineTo(shipX, baseY + size * 0.35f);
+                shipPath.lineTo(shipX + size * 0.82f, baseY + size * 0.72f);
+                shipPath.close();
+                paint.setColor(boost ? Color.parseColor("#67E8F9") : Color.parseColor("#60A5FA"));
+                canvas.drawPath(shipPath, paint);
+            }
 
             if (boost) {
                 paint.setStyle(Paint.Style.STROKE);
@@ -8040,7 +7637,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharPlacar(Canvas canvas, int w, long now) {
-            int setor = Math.max(1, 1 + (int) (scoreFloat / 1200f));
+            int setor = 1 + arcadeStage(pontuacao, true);
             panelRect.set(dpUi(10), dpUi(10), w - dpUi(10), dpUi(54));
             paint.setColor(withAlpha(Color.BLACK, 118));
             canvas.drawRoundRect(panelRect, dpUi(12), dpUi(12), paint);
@@ -8050,14 +7647,14 @@ public class MainActivity extends AppCompatActivity {
             paint.setColor(Color.WHITE);
             Paint.FontMetrics fm = paint.getFontMetrics();
             float textY = panelRect.centerY() - (fm.ascent + fm.descent) / 2f;
-            canvas.drawText("Pontos " + formatarPontuacaoArcade((int) scoreFloat), dpUi(22), textY, paint);
+            canvas.drawText("Pontos " + formatarPontuacaoArcade(pontuacao), dpUi(22), textY, paint);
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText("Setor " + setor, w / 2f, textY, paint);
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText("Vidas " + lives, w - dpUi(22), textY, paint);
             paint.setTypeface(Typeface.DEFAULT);
 
-            if (now < boostUntilMs) {
+            if (playTimeMs < boostUntilMs) {
                 paint.setColor(Color.parseColor("#A7F3D0"));
                 paint.setTextSize(dpUi(11));
                 paint.setTextAlign(Paint.Align.CENTER);
@@ -8095,6 +7692,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void mostrarPrimosCurtos(int bits, int quantidade) {
+        try {
+            String report = shortPrimesNativo(bits, quantidade);
+            if (report == null || report.isEmpty()) {
+                throw new IllegalStateException("Resultado nativo indisponivel");
+            }
+            registrarCalculo();
+            salvarResultadoTemporario(report, "primos_aleatorios_bits");
+        } catch (IllegalStateException e) {
+            Log.e(TAG, "Falha ao sortear primos curtos", e);
+            Toast.makeText(this, "Não foi possível preparar o resultado.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     /**
      * Acima de {@link #LIMIAR_BITS_ROTA_NATIVA}: avisar sobrecarga local ou compra in-app de entrega por e-mail.
      */
@@ -8104,6 +7715,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage("Gerar neste aparelho pode demorar muito, consumir bateria e esquentar o celular."
                         + (MONETIZACAO_ATIVA ? "\n\nTambém é possível comprar a entrega por e-mail." : ""))
                 .setPositiveButton("Gerar neste aparelho", (d, w) -> {
+                    if (!geracaoAleatoriaAtiva.compareAndSet(false, true)) return;
                     cancelarOperacaoAtual.set(false);
                     if (btnCancelarOperacaoAtual != null) {
                         btnCancelarOperacaoAtual.setVisibility(View.VISIBLE);
@@ -8116,7 +7728,7 @@ public class MainActivity extends AppCompatActivity {
                     if (resultadoView != null) {
                         resultadoView.setText("⏳ Preparando busca nativa...");
                     }
-                    new Thread(() -> executarThreadPrimosAleatorios(bits, quantidade, true, cronometroAtivo)).start();
+                    new Thread(() -> executarThreadPrimosAleatorios(bits, quantidade, cronometroAtivo)).start();
                 });
         if (MONETIZACAO_ATIVA) {
             dialogo.setNeutralButton("Comprar Número de " + bits + " bits", (d, w) -> {
@@ -8168,154 +7780,38 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executarThreadPrimosAleatorios(
-            int bits,
-            int quantidade,
-            boolean usarRotaNativa,
-            CronometroOperacaoHandle cronometroAtivo) {
+            int bits, int quantidade, CronometroOperacaoHandle cronometroAtivo) {
         try {
-            StringBuilder resultado = new StringBuilder();
-            resultado.append("🔢 PRIMOS ALEATÓRIOS GERADOS\n");
-            resultado.append("=============================\n\n");
-            resultado.append("ℹ️ Por se tratar de busca aleatória, o tempo para encontrar primos pode variar bastante de uma execução para outra.\n");
-            resultado.append("   Se a busca demorar muito, recomenda-se cancelar e tentar novamente com os mesmos parâmetros ou ajustando o tamanho em bits.\n\n");
-            resultado.append("📊 PARÂMETROS:\n");
-            resultado.append("   • Quantidade: ").append(quantidade).append(" primos\n");
-            resultado.append("   • Tamanho: ").append(bits).append(" bits\n");
-            resultado.append("   • Dígitos aproximados: ").append((int) (bits * 0.301 + 1)).append(" dígitos\n");
-            resultado.append("   • Modo: Geração por bits\n\n");
-
-            resultado.append("🚀 INICIANDO GERAÇÃO...\n");
-            resultado.append("   Buscando primos grandes com algoritmos otimizados.\n\n");
-
-            if (usarRotaNativa) {
-                resultado.append("🔧 MODO ATUAL:\n");
-                resultado.append("   • Método: Rota nativa C++/GMP\n");
-                resultado.append("   • Faixa automática: acima de ").append(LIMIAR_BITS_ROTA_NATIVA).append(" bits\n\n");
-
-                File arquivoPrimos = criarArquivoTempPrimosGigantes("primos_gigantes_");
-                String relatorioNativo = executarJobNativoPrimosGigantes(bits, quantidade, 0, status ->
-                        runOnUiThread(() -> resultadoView.setText(status)), arquivoPrimos);
-                resultado = new StringBuilder(relatorioNativo);
-                resultado.append("\n\n--- PRIMOS (DECIMAL COMPLETO) ---\n");
-                try {
-                    resultado.append(lerTextoUtf8(arquivoPrimos));
-                } catch (IOException ex) {
-                    resultado.append("(erro ao ler arquivo: ").append(ex.getMessage()).append(")\n");
-                }
-            } else {
-                int tentativas;
-                int numThreadsUtilizados;
-                List<BigInteger> primosEncontrados;
-
-                resultado.append("🔧 MODO ATUAL:\n");
-                resultado.append("   • Método: Proprietário otimizado\n\n");
-
-                int maxTentativas = Math.max(quantidade * 1000, bits * 100);
-
-                CopyOnWriteArrayList<BigInteger> primosEncontradosJava = new CopyOnWriteArrayList<>();
-                AtomicInteger tentativasAtomic = new AtomicInteger(0);
-                AtomicBoolean pararThreads = new AtomicBoolean(false);
-
-                int numThreads = Math.min(Runtime.getRuntime().availableProcessors(), 8);
-                Thread[] threads = new Thread[numThreads];
-
-                for (int t = 0; t < numThreads; t++) {
-                    final int threadId = t;
-                    threads[threadId] = new Thread(() -> {
-                        SecureRandom threadRnd = new SecureRandom();
-                        while (!pararThreads.get() && !cancelarOperacaoAtual.get() && primosEncontradosJava.size() < quantidade) {
-                            if (primosEncontradosJava.size() >= quantidade || pararThreads.get() || cancelarOperacaoAtual.get()) {
-                                break;
-                            }
-
-                            BigInteger candidato = BigInteger.probablePrime(bits, threadRnd);
-                            int candidatoBits = candidato.bitLength();
-                            if (candidatoBits >= bits - 1 && candidatoBits <= bits + 1) {
-                                if (primosEncontradosJava.size() < quantidade && !pararThreads.get()) {
-                                    primosEncontradosJava.add(candidato);
-                                    if (primosEncontradosJava.size() >= quantidade) {
-                                        pararThreads.set(true);
-                                        break;
-                                    }
-                                }
-                            }
-                            tentativasAtomic.incrementAndGet();
-
-                            if (tentativasAtomic.get() >= maxTentativas) {
-                                break;
-                            }
-                        }
-                    });
-                    threads[threadId].start();
-                }
-
-                long timeoutStartTime = System.currentTimeMillis();
-                long timeout = Math.max(60000, bits * 100);
-                while (!cancelarOperacaoAtual.get()
-                        && primosEncontradosJava.size() < quantidade
-                        && (System.currentTimeMillis() - timeoutStartTime) < timeout) {
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                        break;
-                    }
-                }
-
-                pararThreads.set(true);
-                for (Thread thread : threads) {
-                    try {
-                        thread.join(1000);
-                    } catch (InterruptedException e) {
-                        thread.interrupt();
-                    }
-                }
-
-                primosEncontrados = new ArrayList<>(primosEncontradosJava);
-                tentativas = tentativasAtomic.get();
-                numThreadsUtilizados = numThreads;
-
-                if (cancelarOperacaoAtual.get()) {
-                    resultado.append("\n⏹️ OPERAÇÃO CANCELADA PELO USUÁRIO\n");
-                    resultado.append("=================================\n");
-                    resultado.append("Mostrando os primos já encontrados até o momento do cancelamento:\n\n");
-                }
-
-                anexarResultadoPrimosAleatorios(
-                        resultado,
-                        primosEncontrados,
-                        quantidade,
-                        tentativas,
-                        numThreadsUtilizados);
+            File arquivoPrimos = criarArquivoTempPrimosGigantes("primos_gigantes_");
+            String resultado;
+            try {
+                String relatorio = executarJobNativoPrimosGigantes(bits, quantidade, 0, status -> {
+                    pararCronometroOperacao(cronometroAtivo);
+                    runOnUiThread(() -> resultadoView.setText(status));
+                }, arquivoPrimos, true);
+                resultado = relatorio + "\n\n--- PRIMOS (DECIMAL COMPLETO) ---\n"
+                        + lerTextoUtf8(arquivoPrimos);
+            } finally {
+                arquivoPrimos.delete();
             }
-
-            resultado.append("\n⏰ TIMESTAMP: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n");
-            long fimRelatorio = System.currentTimeMillis();
-            if (usarRotaNativa) {
-                String ajustado = alinharTempoRelatorioNativoComCronometro(resultado.toString(), cronometroAtivo.inicioMs, fimRelatorio);
-                resultado = new StringBuilder(ajustado);
-            } else {
-                int idxTs = resultado.indexOf("\n⏰ TIMESTAMP:");
-                if (idxTs >= 0) {
-                    resultado.insert(idxTs, "\n   • Tempo total: " + formatarSegundosTempoCronometro(cronometroAtivo.inicioMs, fimRelatorio) + " s");
-                }
-            }
-
+            resultado = alinharTempoRelatorioNativoComCronometro(
+                    resultado, cronometroAtivo.inicioMs, System.currentTimeMillis());
             pararCronometroOperacao(cronometroAtivo);
-
-            salvarResultadoTemporario(resultado.toString(), "primos_aleatorios_bits");
+            salvarResultadoTemporario(resultado, "primos_aleatorios_bits");
 
         } catch (Throwable t) {
             Log.e(TAG, "Primos aleatórios (bits=" + bits + ")", t);
             pararCronometroOperacao(cronometroAtivo);
             String msg = t.getMessage();
             if (t instanceof OutOfMemoryError) {
-                msg = "Memória insuficiente para este tamanho em bits com BigInteger. Tente menos threads ou use bits um pouco menores.";
+                msg = "Memória insuficiente para esta busca. Tente uma quantidade ou um tamanho em bits menor.";
             }
             final String msgFinal = msg != null ? msg : t.getClass().getSimpleName();
             runOnUiThread(() -> resultadoView.setText("❌ Erro: " + msgFinal));
         } finally {
             cancelarOperacaoAtual.set(false);
             runOnUiThread(() -> {
+                geracaoAleatoriaAtiva.set(false);
                 if (btnCancelarOperacaoAtual != null) {
                     btnCancelarOperacaoAtual.setVisibility(View.GONE);
                 }
@@ -8386,18 +7882,23 @@ public class MainActivity extends AppCompatActivity {
         contentContainer.addView(modoLabel);
 
         RadioGroup modoGroup = new RadioGroup(this);
-        modoGroup.setOrientation(LinearLayout.HORIZONTAL);
+        modoGroup.setOrientation(LinearLayout.VERTICAL);
 
         RadioButton modoUnico = new RadioButton(this);
-        modoUnico.setText("Relatório Ilimitado");
+        modoUnico.setText("Busca contínua");
         modoUnico.setId(1);
         modoUnico.setChecked(true);
         modoGroup.addView(modoUnico);
 
         RadioButton modoIntervalo = new RadioButton(this);
-        modoIntervalo.setText("Busca de intervalos");
+        modoIntervalo.setText("Faixa");
         modoIntervalo.setId(2);
         modoGroup.addView(modoIntervalo);
+
+        RadioButton modoUmValor = new RadioButton(this);
+        modoUmValor.setText("Um valor");
+        modoUmValor.setId(3);
+        modoGroup.addView(modoUmValor);
 
         contentContainer.addView(modoGroup);
 
@@ -8407,7 +7908,7 @@ public class MainActivity extends AppCompatActivity {
         layoutUnico.setId(100);
 
         TextView labN = new TextView(this);
-        labN.setText("Valor de n (modo relatório)");
+        labN.setText("n inicial");
         labN.setTypeface(null, Typeface.BOLD);
         labN.setPadding(dpUi(4), dpUi(8), dpUi(4), dpUi(4));
         layoutUnico.addView(labN);
@@ -8451,7 +7952,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Listener para mudança de modo
         modoGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            if (checkedId == 1) {
+            if (checkedId != 2) {
+                labN.setText(checkedId == 3 ? "n" : "n inicial");
                 layoutUnico.setVisibility(View.VISIBLE);
                 layoutIntervalo.setVisibility(View.GONE);
             } else {
@@ -8460,148 +7962,15 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Verificar se há estado salvo para continuar
         SharedPreferences prefs = getSharedPreferences("ConjecturaLegendre", MODE_PRIVATE);
-        String ultimoN = prefs.getString("ultimo_n", "");
-        int totalVerificados = prefs.getInt("total_verificados", 0);
-        long timestampUltimaExecucao = prefs.getLong("timestamp_ultima_execucao", 0);
-
-        if (!ultimoN.isEmpty() && totalVerificados > 0) {
-            TextView estadoSalvo = new TextView(this);
-            estadoSalvo.setText("💾 Estado salvo encontrado:\n" +
-                "• Último n testado: " + ultimoN + "\n" +
-                "• Total de intervalos: " + totalVerificados + "\n" +
-                "• Última execução: " + new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(new Date(timestampUltimaExecucao)) + "\n\n" +
-                "Clique em 'Continuar de onde parou' para retomar.");
-            estadoSalvo.setPadding(0, 10, 0, 20);
-            estadoSalvo.setTextColor(Color.parseColor("#0066CC"));
-            contentContainer.addView(estadoSalvo);
-
-            Button btnContinuar = new Button(this);
-            btnContinuar.setText("🔄 Continuar de onde parou");
-            btnContinuar.setBackgroundColor(0xFF4CAF50);
-            btnContinuar.setTextColor(0xFFFFFFFF);
-            btnContinuar.setOnClickListener(continuarView -> {
-                // Implementar lógica para continuar
-                resultadoView.setText("🚀 CONTINUANDO RELATÓRIO ILIMITADO\n" +
-                    "Retomando de n = " + ultimoN + "\n" +
-                    "Total anterior: " + totalVerificados + " intervalos\n" +
-                    "Status: Continuando busca por falha na conjectura...");
-
-                // Iniciar continuação em thread separada
-                new Thread(() -> {
-                    try {
-                        // Parse do valor n salvo
-                        BigInteger n = parseBigInteger(ultimoN);
-
-                        // Iniciar cronômetro
-                        long startTime = System.currentTimeMillis();
-
-                        StringBuilder resultado = new StringBuilder();
-                        resultado.append("Conjectura de Legendre - Continuação\n");
-                        resultado.append("==================================\n\n");
-                        resultado.append("Estado Anterior:\n");
-                        resultado.append("- n inicial: ").append(ultimoN).append("\n");
-                        resultado.append("- Total verificados: ").append(totalVerificados).append(" intervalos\n");
-                        resultado.append("- Última execução: ").append(new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(new Date(timestampUltimaExecucao))).append("\n\n");
-
-                        resultado.append("Continuando busca...\n");
-                        resultado.append("===================\n");
-
-                        BigInteger nAtual = n;
-                        int totalVerificadosContinuacao = totalVerificados;
-                        int intervalosComPrimos = 0;
-                        int intervalosSemPrimos = 0;
-
-                        // Continuar teste até encontrar falha ou parar
-                        boolean falhaEncontrada = false;
-                        BigInteger nFalha = BigInteger.ZERO;
-
-                        while (!falhaEncontrada && !this.paradaUsuario) {
-                            BigInteger inicioAtual = nAtual.multiply(nAtual);
-                            BigInteger fimAtual = nAtual.add(BigInteger.ONE).multiply(nAtual.add(BigInteger.ONE));
-
-                            // Verificação otimizada
-                            boolean primoEncontrado = verificarIntervaloLegendre(inicioAtual, fimAtual);
-
-                            if (primoEncontrado) {
-                                intervalosComPrimos++;
-                            } else {
-                                // Verificação extra
-                                primoEncontrado = verificarIntervaloLegendreDetalhado(inicioAtual, fimAtual);
-
-                                if (primoEncontrado) {
-                                    intervalosComPrimos++;
-                                } else {
-                                    falhaEncontrada = true;
-                                    nFalha = nAtual;
-                                }
-                            }
-
-                            if (!falhaEncontrada) {
-                                totalVerificadosContinuacao++;
-                                nAtual = nAtual.add(BigInteger.ONE);
-
-                                // Atualizar progresso
-                                long tempoAtual = System.currentTimeMillis();
-                                if (tempoAtual - startTime > 30000) {
-                                    final String progresso = "🚀 CONTINUAÇÃO - PROGRESSO:\n" +
-                                        "ANALISANDO: n = " + nAtual + "\n" +
-                                        "Total verificados: " + totalVerificadosContinuacao + " intervalos\n" +
-                                        "Taxa: ~" + (totalVerificadosContinuacao * 1000 / (tempoAtual - startTime)) + " intervalos/segundo\n" +
-                                        "Status: Continuando busca...";
-                                    runOnUiThread(() -> resultadoView.setText(progresso));
-                                    startTime = tempoAtual;
-                                }
-                            }
-                        }
-
-                        // Salvar estado atualizado
-                        SharedPreferences prefsContinuacao = getSharedPreferences("ConjecturaLegendre", MODE_PRIVATE);
-                        SharedPreferences.Editor editor = prefsContinuacao.edit();
-                        editor.putString("ultimo_n", nAtual.toString());
-                        editor.putInt("total_verificados", totalVerificadosContinuacao);
-                        editor.putInt("intervalos_com_primos", intervalosComPrimos);
-                        editor.putInt("intervalos_sem_primos", intervalosSemPrimos);
-                        editor.putLong("timestamp_ultima_execucao", System.currentTimeMillis());
-                        editor.apply();
-
-                        // Resultado final
-                        if (this.paradaUsuario) {
-                            resultado.append("\n⏹️ EXECUÇÃO PARADA PELO USUÁRIO\n");
-                            resultado.append("================================\n");
-                            resultado.append("Execução interrompida em n = ").append(nAtual).append("\n");
-                            resultado.append("Estado salvo para continuar depois.\n\n");
-                        } else if (falhaEncontrada) {
-                            BigInteger inicioFalha = nFalha.multiply(nFalha);
-                            BigInteger fimFalha = nFalha.add(BigInteger.ONE).multiply(nFalha.add(BigInteger.ONE));
-
-                            resultado.append("\n🚨 FALHA NA CONJECTURA ENCONTRADA!\n");
-                            resultado.append("================================\n");
-                            resultado.append("n = ").append(nFalha).append(" falhou!\n");
-                            resultado.append("Intervalo [").append(inicioFalha).append(", ").append(fimFalha).append("] não contém primos.\n");
-                            resultado.append("A conjectura de Legendre é FALSA para n = ").append(nFalha).append("!\n\n");
-                        }
-
-                        resultado.append("Estatísticas da Continuação:\n");
-                        resultado.append("==========================\n");
-                        resultado.append("Intervalos verificados: ").append(totalVerificadosContinuacao).append("\n");
-                        resultado.append("Intervalos com primos: ").append(intervalosComPrimos).append("\n");
-                        resultado.append("Intervalos sem primos: ").append(intervalosSemPrimos).append("\n");
-                        resultado.append("Taxa de sucesso: ").append(String.format("%.2f%%", (intervalosComPrimos * 100.0) / totalVerificadosContinuacao)).append("\n");
-
-                        resultado.append("\nTimestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
-                        // Salvar resultado
-                        salvarResultadoTemporario(resultado.toString(), "conjectura_legendre_continuacao");
-
-                    } catch (Exception e) {
-                        runOnUiThread(() -> resultadoView.setText("Erro na continuação: " + e.getMessage()));
-                    }
-                }).start();
-            });
-            contentContainer.addView(btnContinuar);
-        }
+        Button btnContinuar = new Button(this);
+        btnContinuar.setText("Continuar busca salva");
+        btnContinuar.setVisibility(prefs.getString("ultimo_n", "").isEmpty() ? View.GONE : View.VISIBLE);
+        btnContinuar.setOnClickListener(v -> {
+            String salvo = prefs.getString("ultimo_n", "");
+            if (!salvo.isEmpty()) iniciarLegendreContinuo(salvo, resultadoView, btnContinuar);
+        });
+        contentContainer.addView(btnContinuar);
 
         // Botão verificar
         Button btnVerificar = new Button(this);
@@ -8612,200 +7981,21 @@ public class MainActivity extends AppCompatActivity {
             try {
                 int modo = modoGroup.getCheckedRadioButtonId();
 
-                if (modo == 1) {
-                    // Modo único
-                    String nStr = inputN.getText().toString();
-                    if (nStr.isEmpty()) {
-                        Toast.makeText(this, "Digite um valor para n", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    resultadoView.setText("🚀 INICIANDO RELATÓRIO ILIMITADO\n" +
-                        "Objetivo: Encontrar falha na Conjectura de Legendre\n" +
-                        "Iniciando em: n = " + nStr + "\n" +
-                        "Status: Analisando intervalos [n², (n+1)²]...\n" +
-                        "Resultado: Só será mostrado se NÃO encontrar primos em algum intervalo");
-
+                if (modo == 3) {
+                    String entrada = inputN.getText().toString();
+                    resultadoView.setText("Verificando intervalo...");
                     new Thread(() -> {
                         try {
-                            // Parse do valor n usando BigInteger
-                            BigInteger n = parseBigInteger(nStr);
-                            if (n.compareTo(BigInteger.ONE) < 0) {
-                                runOnUiThread(() -> resultadoView.setText("Erro: n deve ser ≥ 1"));
-                                return;
-                            }
-
-                            // Verificar se n é muito grande
-                            if (n.toString().length() > 10000) {
-                                runOnUiThread(() -> resultadoView.setText("Erro: n deve ter no máximo 10.000 dígitos"));
-                                return;
-                            }
-
-                            // Iniciar cronômetro
-                            long startTime = System.currentTimeMillis();
-
-                            BigInteger inicio = n.multiply(n);
-                            BigInteger fim = n.add(BigInteger.ONE).multiply(n.add(BigInteger.ONE));
-
-                            StringBuilder resultado = new StringBuilder();
-                            resultado.append("Conjectura de Legendre - Relatório Ilimitado\n");
-                            resultado.append("==========================================\n\n");
-                            resultado.append("Parâmetros:\n");
-                            resultado.append("- n inicial: ").append(nStr).append("\n");
-                            resultado.append("- Objetivo: Encontrar n onde [n², (n+1)²] NÃO contém primos\n");
-                            resultado.append("- Resultado: Só será mostrado se encontrar falha na conjectura\n");
-                            resultado.append("- Sem limite de intervalos\n");
-                            resultado.append("- Suporte a números de até 10.000 dígitos\n\n");
-
-                            resultado.append("Iniciando teste contínuo...\n");
-                            resultado.append("==========================\n");
-
-                            // Aviso sobre performance para números muito grandes
-                            if (n.toString().length() > 100) {
-                                resultado.append("⚠️ AVISO: Número inicial muito grande (").append(n.toString().length()).append(" dígitos).\n");
-                                resultado.append("   O processo pode demorar muito para cada intervalo.\n");
-                                resultado.append("   Considere usar um valor menor para testes rápidos.\n\n");
-                            }
-
-                            BigInteger nAtual = n;
-                            int totalVerificadosUnico = 0;
-                            int intervalosComPrimos = 0;
-                            int intervalosSemPrimos = 0;
-
-                            // Testar continuamente até encontrar falha (sem limite de intervalos)
-                            boolean falhaEncontrada = false;
-                            BigInteger nFalha = BigInteger.ZERO;
-
-                            while (!falhaEncontrada && !this.paradaUsuario) {
-                                BigInteger inicioAtual = nAtual.multiply(nAtual);
-                                BigInteger fimAtual = nAtual.add(BigInteger.ONE).multiply(nAtual.add(BigInteger.ONE));
-
-                                // VERIFICAÇÃO OTIMIZADA PARA NÚMEROS DE ATÉ 10.000 DÍGITOS
-                                boolean primoEncontrado = verificarIntervaloLegendre(inicioAtual, fimAtual);
-
-                                if (primoEncontrado) {
-                                    // PRIMO ENCONTRADO: Intervalo válido, continuar silenciosamente
-                                    intervalosComPrimos++;
-                                    // NÃO mostrar nada - continuar para próximo n
-                                } else {
-                                    // VERIFICAÇÃO EXTRA: Caso duvidoso, fazer verificação mais detalhada
-                                    primoEncontrado = verificarIntervaloLegendreDetalhado(inicioAtual, fimAtual);
-
-                                    if (primoEncontrado) {
-                                                intervalosComPrimos++;
-                                    } else {
-                                            // FALHA CONFIRMADA! 🚨 NENHUM PRIMO NO INTERVALO
-                                            falhaEncontrada = true;
-                                            nFalha = nAtual;
-                                    }
-                                }
-
-                                if (!falhaEncontrada) {
-                                    totalVerificadosUnico++;
-                                    nAtual = nAtual.add(BigInteger.ONE);
-
-                                    // Atualizar progresso a cada 30 segundos para performance máxima
-                                    long tempoAtual = System.currentTimeMillis();
-                                    if (tempoAtual - startTime > 30000) { // 30 segundos
-                                        final String progressoAtual = "🚀 PROGRESSO ULTRA-RÁPIDO:\n" +
-                                            "ANALISANDO: n = " + nAtual + "\n" +
-                                            "Intervalo: [" + inicioAtual + ", " + fimAtual + "]\n" +
-                                            "Total verificados: " + totalVerificadosUnico + " intervalos\n" +
-                                            "Taxa: ~" + (totalVerificadosUnico * 1000 / (tempoAtual - startTime)) + " intervalos/segundo\n" +
-                                            "Status: Testando com verificação otimizada... | Dígitos: " + inicioAtual.toString().length();
-                                        runOnUiThread(() -> resultadoView.setText(progressoAtual));
-                                        startTime = tempoAtual; // Reset do timer
-                                    }
-
-                                    // Reportar progresso detalhado a cada 10.000 intervalos (menos frequente)
-                                    if (totalVerificadosUnico % 10000 == 0) {
-                                        resultado.append("⚡ MILESTONE: ").append(totalVerificadosUnico).append(" intervalos verificados\n");
-                                        resultado.append("   n atual: ").append(nAtual).append(" → intervalo [").append(inicioAtual).append(", ").append(fimAtual).append("]\n");
-                                        resultado.append("   dígitos: ").append(inicioAtual.toString().length()).append(" | Status: Todos os intervalos válidos até agora\n\n");
-                                    }
-
-                                    // Aviso sobre performance para números muito grandes (a cada 100.000)
-                                    if (inicioAtual.toString().length() > 1000 && totalVerificadosUnico % 100000 == 0) {
-                                        resultado.append("⚠️ AVISO: Números muito grandes detectados (mais de 1000 dígitos).\n");
-                                        resultado.append("   O processo pode demorar muito. Considere parar se necessário.\n");
-                                        resultado.append("   Progresso atual: ").append(totalVerificadosUnico).append(" intervalos, n = ").append(nAtual).append("\n\n");
-                                    }
-                                }
-                            }
-
-                            // Salvar estado atual para poder continuar depois
-                            SharedPreferences prefsUnico = getSharedPreferences("ConjecturaLegendre", MODE_PRIVATE);
-                            SharedPreferences.Editor editor = prefsUnico.edit();
-                            editor.putString("ultimo_n", nAtual.toString());
-                            editor.putInt("total_verificados", totalVerificadosUnico);
-                            editor.putInt("intervalos_com_primos", intervalosComPrimos);
-                            editor.putInt("intervalos_sem_primos", intervalosSemPrimos);
-                            editor.putLong("timestamp_ultima_execucao", System.currentTimeMillis());
-                            editor.apply();
-
-                            // Verificar se encontrou falha, foi interrompido ou parado pelo usuário
-                            if (this.paradaUsuario) {
-                                resultado.append("\n⏹️ EXECUÇÃO PARADA PELO USUÁRIO\n");
-                                resultado.append("================================\n");
-                                resultado.append("Execução interrompida em n = ").append(nAtual).append("\n");
-                                resultado.append("Estado salvo automaticamente para continuar depois.\n\n");
-
-                                resultado.append("Estatísticas até a parada:\n");
-                                resultado.append("========================\n");
-                                resultado.append("Intervalos verificados: ").append(totalVerificadosUnico).append("\n");
-                                resultado.append("Intervalos com primos: ").append(intervalosComPrimos).append("\n");
-                                resultado.append("Intervalos sem primos: ").append(intervalosSemPrimos).append("\n");
-                                resultado.append("Taxa de sucesso: ").append(String.format("%.2f%%", (intervalosComPrimos * 100.0) / totalVerificadosUnico)).append("\n");
-
-                                // Salvar em arquivo temporário e abrir com visualizador HTML
-                                salvarResultadoTemporario(resultado.toString(), "conjectura_legendre_parada_usuario");
-                            } else if (falhaEncontrada) {
-                                BigInteger inicioFalha = nFalha.multiply(nFalha);
-                                BigInteger fimFalha = nFalha.add(BigInteger.ONE).multiply(nFalha.add(BigInteger.ONE));
-
-                                resultado.append("\n🚨 FALHA NA CONJECTURA ENCONTRADA!\n");
-                                resultado.append("================================\n");
-                                resultado.append("n = ").append(nFalha).append(" falhou!\n");
-                                resultado.append("Intervalo [").append(inicioFalha).append(", ").append(fimFalha).append("] não contém primos.\n");
-                                resultado.append("A conjectura de Legendre é FALSA para n = ").append(nFalha).append("!\n\n");
-
-                                resultado.append("Estatísticas até a falha:\n");
-                                resultado.append("========================\n");
-                                resultado.append("Intervalos verificados: ").append(totalVerificadosUnico).append("\n");
-                                resultado.append("Intervalos com primos: ").append(intervalosComPrimos).append("\n");
-                                resultado.append("Intervalos sem primos: ").append(intervalosSemPrimos).append("\n");
-                                resultado.append("Taxa de sucesso: ").append(String.format("%.2f%%", (intervalosComPrimos * 100.0) / totalVerificadosUnico)).append("\n");
-
-                                // Salvar em arquivo temporário e abrir com visualizador HTML
-                                salvarResultadoTemporario(resultado.toString(), "conjectura_legendre_falha");
-                            } else {
-                                // Se chegou aqui, não encontrou falha (caso raro, mas possível)
-                                resultado.append("\n✅ CONJECTURA DE LEGENDRE CONFIRMADA!\n");
-                                resultado.append("=====================================\n");
-                                resultado.append("Testados ").append(totalVerificadosUnico).append(" intervalos sem encontrar falha.\n");
-                                resultado.append("Último n testado: ").append(nAtual.subtract(BigInteger.ONE)).append("\n\n");
-
-                                resultado.append("Estatísticas Finais:\n");
-                                resultado.append("===================\n");
-                                resultado.append("Intervalos verificados: ").append(totalVerificadosUnico).append("\n");
-                                resultado.append("Intervalos com primos: ").append(intervalosComPrimos).append("\n");
-                                resultado.append("Intervalos sem primos: ").append(intervalosSemPrimos).append("\n");
-                                resultado.append("Taxa de sucesso: ").append(String.format("%.2f%%", (intervalosComPrimos * 100.0) / totalVerificadosUnico)).append("\n");
-
-                                // Calcular tempo de execução
-                                long endTime = System.currentTimeMillis();
-                                double tempoExecucao = (endTime - startTime) / 1000.0;
-                                resultado.append("Tempo de execução: ").append(String.format("%.3f", tempoExecucao)).append(" segundos\n");
-                                resultado.append("\nTimestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
-                                // Salvar em arquivo temporário e abrir com visualizador HTML
-                                salvarResultadoTemporario(resultado.toString(), "conjectura_legendre_confirmada");
-                            }
-
+                            BigInteger n = parseBigInteger(entrada);
+                            if (n.signum() <= 0) throw new IllegalArgumentException("n deve ser maior ou igual a 1.");
+                            String relatorio = relatorioLegendreComum(n, n);
+                            salvarResultadoTemporario(relatorio, "conjectura_legendre_intervalo");
                         } catch (Exception e) {
                             runOnUiThread(() -> resultadoView.setText("Erro: " + e.getMessage()));
                         }
                     }).start();
+                } else if (modo == 1) {
+                    iniciarLegendreContinuo(inputN.getText().toString(), resultadoView, btnContinuar);
 
                 } else {
                     // Modo intervalo
@@ -8830,117 +8020,13 @@ public class MainActivity extends AppCompatActivity {
                                 return;
                             }
 
-                            if (nFim.compareTo(nInicio) <= 0) {
-                                runOnUiThread(() -> resultadoView.setText("Erro: n final deve ser maior que n inicial"));
+                            if (nFim.compareTo(nInicio) < 0) {
+                                runOnUiThread(() -> resultadoView.setText("Erro: n final deve ser maior ou igual a n inicial"));
                                 return;
                             }
 
-                            // Verificar se o intervalo é muito grande
-                            BigInteger tamanhoIntervalo = nFim.subtract(nInicio).add(BigInteger.ONE);
-                            if (tamanhoIntervalo.compareTo(BigInteger.valueOf(10000)) > 0) {
-                                runOnUiThread(() -> resultadoView.setText("Aviso: Intervalo muito grande. Serão considerados apenas os primeiros 10.000 valores."));
-                                nFim = nInicio.add(BigInteger.valueOf(9999)); // Limitar a 10.000
-                            }
-
-                            // Iniciar cronômetro
-                            long startTime = System.currentTimeMillis();
-
-                            StringBuilder resultado = new StringBuilder();
-                            resultado.append("Conjectura de Legendre - Busca de Intervalos\n");
-                            resultado.append("============================================\n\n");
-                            resultado.append("Parâmetros:\n");
-                            resultado.append("- n inicial: ").append(nInicioStr).append("\n");
-                            resultado.append("- n final: ").append(nFimStr).append("\n");
-                            resultado.append("- Suporte a números de até 10.000 dígitos\n");
-                            if (tamanhoIntervalo.compareTo(BigInteger.valueOf(10000)) > 0) {
-                                resultado.append("- ⚠️ Intervalo limitado a 10.000 valores para performance\n");
-                            }
-                            resultado.append("\n");
-
-                            BigInteger n = nInicio;
-                            int totalVerificadosIntervalo = 0;
-                            int totalPrimosEncontrados = 0;
-                            int intervalosComPrimos = 0;
-                            int intervalosSemPrimos = 0;
-
-                            // Primeiro, fazer a contagem para as estatísticas
-                            resultado.append("Analisando intervalos...\n");
-                            resultado.append("=====================\n");
-
-                            // Primeira passada: apenas contar para estatísticas
-                            while (n.compareTo(nFim) <= 0) {
-                                BigInteger inicio = n.multiply(n);
-                                BigInteger fim = n.add(BigInteger.ONE).multiply(n.add(BigInteger.ONE));
-
-                                // Usar verificação otimizada para números de até 10.000 dígitos
-                                boolean primoEncontrado = verificarIntervaloLegendre(inicio, fim);
-
-                                if (primoEncontrado) {
-                                        intervalosComPrimos++;
-                                    totalPrimosEncontrados++;
-                                    } else {
-                                        intervalosSemPrimos++;
-                                }
-
-                                totalVerificadosIntervalo++;
-                                n = n.add(BigInteger.ONE); // Incrementar de 1 em 1
-
-                                // Limitar para performance
-                                if (totalVerificadosIntervalo >= 10000) {
-                                    break;
-                                }
-                            }
-
-                            // Mostrar estatísticas primeiro
-                            resultado.append("\nEstatísticas:\n");
-                            resultado.append("============\n");
-                            resultado.append("Intervalos verificados: ").append(totalVerificadosIntervalo).append("\n");
-                            resultado.append("Intervalos com primos: ").append(intervalosComPrimos).append("\n");
-                            resultado.append("Intervalos sem primos: ").append(intervalosSemPrimos).append("\n");
-                            resultado.append("Total de primos encontrados: ").append(totalPrimosEncontrados).append("\n");
-                            resultado.append("Taxa de sucesso: ").append(String.format("%.2f%%", (intervalosComPrimos * 100.0) / totalVerificadosIntervalo)).append("\n");
-
-                            // Segunda passada: mostrar detalhes dos intervalos
-                            resultado.append("\nDetalhes dos Intervalos:\n");
-                            resultado.append("=======================\n");
-
-                            n = nInicio; // Resetar para segunda passada
-                            int contador = 0;
-
-                            while (n.compareTo(nFim) <= 0 && contador < totalVerificadosIntervalo) {
-                                BigInteger inicio = n.multiply(n);
-                                BigInteger fim = n.add(BigInteger.ONE).multiply(n.add(BigInteger.ONE));
-
-                                resultado.append("n=").append(n).append(" → intervalo [").append(inicio).append(", ").append(fim).append("]: ");
-
-                                // Usar verificação otimizada
-                                boolean primoEncontrado = verificarIntervaloLegendre(inicio, fim);
-
-                                if (primoEncontrado) {
-                                    resultado.append("✅ PRIMO ENCONTRADO\n");
-                                    } else {
-                                        resultado.append("❌ NENHUM PRIMO\n");
-                                }
-
-                                contador++;
-                                n = n.add(BigInteger.ONE); // Incrementar de 1 em 1
-
-                                // Limitar detalhes para não sobrecarregar o output
-                                if (contador >= 100) {
-                                    resultado.append("\n⚠️ Mostrando apenas os primeiros 100 intervalos para clareza.\n");
-                                    resultado.append("Total de intervalos verificados: ").append(totalVerificadosIntervalo).append("\n");
-                                    break;
-                                }
-                            }
-
-                            // Calcular tempo de execução
-                            long endTime = System.currentTimeMillis();
-                            double tempoExecucao = (endTime - startTime) / 1000.0;
-                            resultado.append("Tempo de execução: ").append(String.format("%.3f", tempoExecucao)).append(" segundos\n");
-                            resultado.append("\nTimestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
-                            // Salvar em arquivo temporário e abrir com visualizador HTML
-                            salvarResultadoTemporario(resultado.toString(), "conjectura_legendre_intervalo");
+                            String relatorio = relatorioLegendreComum(nInicio, nFim);
+                            salvarResultadoTemporario(relatorio, "conjectura_legendre_intervalo");
 
                         } catch (Exception e) {
                             runOnUiThread(() -> resultadoView.setText("Erro: " + e.getMessage()));
@@ -8967,6 +8053,67 @@ public class MainActivity extends AppCompatActivity {
 
         // Área de resultado
         contentContainer.addView(scrollView);
+    }
+
+    private void iniciarLegendreContinuo(String entrada, TextView alvo, Button retomar) {
+        if (!legendreEmAndamento.compareAndSet(false, true)) return;
+        paradaUsuario = false;
+        retomar.setEnabled(false);
+        alvo.setText("Verificando quadrados consecutivos…");
+        rolarConteudoParaView(alvo);
+        new Thread(() -> {
+            SharedPreferences prefs = getSharedPreferences("ConjecturaLegendre", MODE_PRIVATE);
+            String relatorio;
+            try {
+                BigInteger n = parseBigInteger(entrada);
+                String inicio = n.toString();
+                if (n.signum() <= 0 || inicio.length() > 10000) {
+                    throw new IllegalArgumentException("Informe um n positivo com até 10.000 dígitos.");
+                }
+                String proximo = inicio;
+                String ultimo = "";
+                long testados = 0;
+                boolean inconclusivo = false;
+                long atualizacao = android.os.SystemClock.elapsedRealtime();
+                while (!paradaUsuario && proximo.length() <= 10000) {
+                    String candidato = legendreWitnessNativo(proximo);
+                    if (candidato == null || candidato.isEmpty()) {
+                        inconclusivo = !paradaUsuario;
+                        break;
+                    }
+                    ultimo = candidato;
+                    ++testados;
+                    n = n.add(BigInteger.ONE);
+                    proximo = n.toString();
+                    long agora = android.os.SystemClock.elapsedRealtime();
+                    if (agora - atualizacao >= 1000) {
+                        atualizacao = agora;
+                        prefs.edit().putString("ultimo_n", proximo).apply();
+                        long v = testados;
+                        runOnUiThread(() -> alvo.setText("Intervalos com candidato: " + v));
+                    }
+                }
+                prefs.edit().putString("ultimo_n", proximo.length() <= 10000 ? proximo : "").apply();
+                String estado = inconclusivo ? "Busca inconclusiva para n = " + proximo
+                        + ". A ausência de candidato não refuta a conjectura."
+                        : paradaUsuario ? "Busca interrompida." : "Limite de n atingido.";
+                relatorio = "CONJECTURA DE LEGENDRE - BUSCA CONTÍNUA\n\nn inicial: " + inicio
+                        + "\nIntervalos com primo ou provável primo: " + testados
+                        + "\nÚltimo candidato: " + (ultimo.isEmpty() ? "nenhum" : ultimo) + "\n" + estado;
+            } catch (Exception e) {
+                relatorio = "Erro: " + e.getMessage();
+            }
+            String resultado = relatorio;
+            runOnUiThread(() -> {
+                legendreEmAndamento.set(false);
+                retomar.setEnabled(true);
+                retomar.setVisibility(prefs.getString("ultimo_n", "").isEmpty() ? View.GONE : View.VISIBLE);
+                alvo.setText(resultado);
+                if (resultado.startsWith("CONJECTURA") && alvo.isShown() && hasWindowFocus()) {
+                    salvarResultadoTemporario(resultado, "conjectura_legendre_continua");
+                }
+            });
+        }).start();
     }
 
     private void criarInterfaceMersenne() {
@@ -9027,134 +8174,12 @@ public class MainActivity extends AppCompatActivity {
 
                 new Thread(() -> {
                     try {
-                        StringBuilder resultado = new StringBuilder();
-                        resultado.append("Números de Mersenne\n");
-                        resultado.append("==================\n\n");
-                        resultado.append("Parâmetros:\n");
-                        resultado.append("- Entrada (expoente): ").append(entradaP).append("\n");
-                        resultado.append("- p = ").append(p).append("\n");
-                        resultado.append("- Fórmula: M(p) = 2^p - 1\n\n");
-
-                        // Verificar se p é primo
-                        resultado.append("Análise do Expoente:\n");
-                        resultado.append("===================\n");
-                        if (!ehPrimo(p)) {
-                            resultado.append("p = ").append(p).append(" não é primo!\n");
-                            resultado.append("M(").append(p).append(") não é um número de Mersenne válido.\n\n");
-                        } else {
-                            resultado.append("p = ").append(p).append(" é primo! ✅\n\n");
-
-                            // Calcular 2^p - 1 usando BigInteger para evitar overflow
-                            resultado.append("Cálculo:\n");
-                            resultado.append("========\n");
-
-                            // 2^p − 1 (equivale a (1 << p) − 1, sem depender só de pow)
-                            BigInteger mersenne = BigInteger.ONE.shiftLeft(p).subtract(BigInteger.ONE);
-
-                            resultado.append("M(").append(p).append(") = 2^").append(p).append(" - 1 = ").append(mersenne).append("\n");
-                            resultado.append("Dígitos: ").append(mersenne.toString().length()).append("\n\n");
-
-                            // Verificar se é primo usando método otimizado para números grandes
-                            resultado.append("Análise de Primalidade:\n");
-                            resultado.append("========================\n");
-
-                            // Mesmo teste de primalidade que o card «Teste de Primalidade» (algoritmo especializado)
-                            boolean ehPrimoMersenne = ehPrimoBigInteger(mersenne);
-
-                            if (ehPrimoMersenne) {
-                                resultado.append("✅ M(").append(p).append(") é um PRIMO de Mersenne!\n");
-                                resultado.append("Este é um número muito especial na matemática.\n\n");
-                            } else {
-                                resultado.append("❌ M(").append(p).append(") não é primo.\n\n");
-                            }
-
-                            // Verificar se está na lista dos primos de Mersenne conhecidos
-                            resultado.append("Verificação na Lista de Primos Conhecidos:\n");
-                            resultado.append("==========================================\n");
-
-                            int[] primosMersenneConhecidos = {2, 3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607, 1279, 2203, 2281, 3217, 4253, 4423, 9689, 9941, 11213, 19937, 21701, 23209, 44497, 86243, 110503, 132049, 216091, 756839, 859433, 1257787, 1398269, 2976221, 3021377, 6972593, 13466917, 20996011, 24036583, 25964951, 30402457, 32582657, 37156667, 42643801, 43112609, 57885161, 74207281, 77232917, 82589933};
-
-                            boolean encontrado = false;
-                            for (int primo : primosMersenneConhecidos) {
-                                if (primo == p) {
-                                    encontrado = true;
-                                    break;
-                                }
-                            }
-
-                            if (encontrado) {
-                                resultado.append("✅ M(").append(p).append(") está na lista dos primos de Mersenne conhecidos!\n\n");
-                            } else {
-                                resultado.append("❓ M(").append(p).append(") não está na lista dos primos de Mersenne conhecidos.\n");
-                                resultado.append("   Pode ser um novo descoberto ou ainda não verificado.\n\n");
-                            }
+                        String relatorio = mersenneReportNativo(p, false);
+                        if (relatorio == null || relatorio.isEmpty()) {
+                            throw new IllegalStateException("Não foi possível calcular o número de Mersenne.");
                         }
-
-                        resultado.append("Primos de Mersenne Conhecidos:\n");
-                        resultado.append("==============================\n");
-                        resultado.append("M(2) = 3\n");
-                        resultado.append("M(3) = 7\n");
-                        resultado.append("M(5) = 31\n");
-                        resultado.append("M(7) = 127\n");
-                        resultado.append("M(13) = 8191\n");
-                        resultado.append("M(17) = 131071\n");
-                        resultado.append("M(19) = 524287\n");
-                        resultado.append("M(31) = 2147483647\n");
-                        resultado.append("M(61) = 2305843009213693951\n");
-                        resultado.append("M(89) = 618970019642690137449562111\n");
-                        resultado.append("M(107) = 162259276829213363391578010288127\n");
-                        resultado.append("M(127) = 170141183460469231731687303715884105727\n");
-                        resultado.append("M(521) = [número com 157 dígitos]\n");
-                        resultado.append("M(607) = [número com 183 dígitos]\n");
-                        resultado.append("M(1279) = [número com 386 dígitos]\n");
-                        resultado.append("M(2203) = [número com 664 dígitos]\n");
-                        resultado.append("M(2281) = [número com 687 dígitos]\n");
-                        resultado.append("M(3217) = [número com 969 dígitos]\n");
-                        resultado.append("M(4253) = [número com 1281 dígitos]\n");
-                        resultado.append("M(4423) = [número com 1332 dígitos]\n");
-                        resultado.append("M(9689) = [número com 2917 dígitos]\n");
-                        resultado.append("M(9941) = [número com 2993 dígitos]\n");
-                        resultado.append("M(11213) = [número com 3376 dígitos]\n");
-                        resultado.append("M(19937) = [número com 6002 dígitos]\n");
-                        resultado.append("M(21701) = [número com 6533 dígitos]\n");
-                        resultado.append("M(23209) = [número com 6987 dígitos]\n");
-                        resultado.append("M(44497) = [número com 13395 dígitos]\n");
-                        resultado.append("M(86243) = [número com 25962 dígitos]\n");
-                        resultado.append("M(110503) = [número com 33265 dígitos]\n");
-                        resultado.append("M(132049) = [número com 65050 dígitos]\n");
-                        resultado.append("M(216091) = [número com 65050 dígitos]\n");
-                        resultado.append("M(756839) = [número com 227832 dígitos]\n");
-                        resultado.append("M(859433) = [número com 258716 dígitos]\n");
-                        resultado.append("M(1257787) = [número com 378632 dígitos]\n");
-                        resultado.append("M(1398269) = [número com 420921 dígitos]\n");
-                        resultado.append("M(2976221) = [número com 895932 dígitos]\n");
-                        resultado.append("M(3021377) = [número com 909526 dígitos]\n");
-                        resultado.append("M(6972593) = [número com 2098960 dígitos]\n");
-                        resultado.append("M(13466917) = [número com 4053946 dígitos]\n");
-                        resultado.append("M(20996011) = [número com 6320430 dígitos]\n");
-                        resultado.append("M(24036583) = [número com 7235733 dígitos]\n");
-                        resultado.append("M(25964951) = [número com 7816230 dígitos]\n");
-                        resultado.append("M(30402457) = [número com 9152052 dígitos]\n");
-                        resultado.append("M(32582657) = [número com 9808358 dígitos]\n");
-                        resultado.append("M(37156667) = [número com 11185272 dígitos]\n");
-                        resultado.append("M(42643801) = [número com 12837064 dígitos]\n");
-                        resultado.append("M(43112609) = [número com 12978189 dígitos]\n");
-                        resultado.append("M(57885161) = [número com 17425170 dígitos]\n");
-                        resultado.append("M(74207281) = [número com 22338618 dígitos]\n");
-                        resultado.append("M(77232917) = [número com 23249425 dígitos]\n");
-                        resultado.append("M(82589933) = [número com 24862048 dígitos]\n\n");
-
-                        if (p == 31) {
-                            resultado.append("Nota (só quando p = 31): M(31) = 2^31 − 1 = 2.147.483.647 é um dos primos de Mersenne mais citados.\n");
-                            resultado.append("É o maior primo que cabe em 32 bits assinados; Euler referiu este valor em 1772.\n\n");
-                        }
-
-                        resultado.append("Timestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
                         pararCronometroOperacao(cronometroAtivo);
-
-                        // Salvar em arquivo temporário e abrir com visualizador HTML
-                        salvarResultadoTemporario(resultado.toString(), "numeros_mersenne");
+                        salvarResultadoTemporario(relatorio, "numeros_mersenne");
 
             } catch (Exception e) {
                         pararCronometroOperacao(cronometroAtivo);
@@ -9167,6 +8192,34 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         contentContainer.addView(btnCalcular);
+
+        Button btnListar = new Button(this);
+        btnListar.setAllCaps(false);
+        btnListar.setText("Listar Mersenne primos até o expoente");
+        btnListar.setOnClickListener(v -> {
+            int p;
+            try {
+                p = parseBigIntegerOuExpressao(inputP.getText().toString()).intValueExact();
+                if (p < 2 || p > 10000) throw new IllegalArgumentException();
+            } catch (IllegalArgumentException | ArithmeticException e) {
+                Toast.makeText(this, "Use um expoente máximo entre 2 e 10.000.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            CronometroOperacaoHandle cronometro = iniciarCronometroOperacao(resultadoView,
+                "Listagem de Mersenne", "Expoente máximo: " + p);
+            new Thread(() -> {
+                try {
+                    String report = mersenneReportNativo(p, true);
+                    if (report == null) throw new IllegalStateException("Faixa indisponível.");
+                    salvarResultadoTemporario(report, "numeros_mersenne_listagem");
+                } catch (Exception e) {
+                    runOnUiThread(() -> resultadoView.setText("Erro: " + e.getMessage()));
+                } finally {
+                    pararCronometroOperacao(cronometro);
+                }
+            }).start();
+        });
+        contentContainer.addView(btnListar);
 
         // Área de resultado
         contentContainer.addView(scrollView);
@@ -9332,91 +8385,12 @@ public class MainActivity extends AppCompatActivity {
                     // Executar estatísticas em thread separada
                     new Thread(() -> {
                         try {
-                            long startTime = System.currentTimeMillis();
-                            StringBuilder resultado = new StringBuilder();
-
-                            resultado.append("📊 ESTATÍSTICAS COMPLETAS DE PRIMOS\n");
-                            resultado.append("==================================\n\n");
-                            resultado.append("🎯 LIMITE SUPERIOR: ").append(n).append("\n\n");
-
-                            // Contar primos usando algoritmo otimizado (como no primeiro card)
-                            int contador = 0;
-                            java.util.List<Long> primos = new java.util.ArrayList<>();
-
-                            // Algoritmo otimizado para números grandes
-                            for (long i = 2; i <= n; i++) {
-                                if (ehPrimoOtimizado(i)) {
-                                    contador++;
-                                    primos.add(i);
-                                }
-
-                                // Progresso a cada 100.000 números
-                                if (i % 100000 == 0) {
-                                    final long progresso = i;
-                                    runOnUiThread(() -> {
-                                        resultadoView.setText("Calculando primos... " + progresso + "/" + n);
-                                    });
-                                }
+                            String relatorioComum = primeStatsNativo(n);
+                            if (relatorioComum == null || relatorioComum.isEmpty()) {
+                                throw new IllegalStateException("Não foi possível calcular as estatísticas.");
                             }
-
-                            resultado.append("📈 RESULTADOS PRINCIPAIS:\n");
-                            resultado.append("   • Total de primos: ").append(contador).append("\n");
-                            resultado.append("   • Densidade: ").append(String.format("%.4f%%", (contador * 100.0) / n)).append("\n");
-                            resultado.append("   • Maior primo encontrado: ").append(primos.isEmpty() ? "N/A" : primos.get(primos.size() - 1)).append("\n\n");
-
-                            // Distribuição por último dígito
-                            int[] ultimoDigito = new int[10];
-                            for (long primo : primos) {
-                                ultimoDigito[(int)(primo % 10)]++;
-                            }
-
-                            resultado.append("🔢 DISTRIBUIÇÃO POR ÚLTIMO DÍGITO:\n");
-                            for (int i = 0; i < 10; i++) {
-                                if (ultimoDigito[i] > 0) {
-                                    resultado.append("   • ").append(i).append(": ").append(ultimoDigito[i]).append(" primos\n");
-                                }
-                            }
-                            resultado.append("\n");
-
-                            // Análise de gaps entre primos
-                            resultado.append("📏 ANÁLISE DE GAPS ENTRE PRIMOS:\n");
-                            if (primos.size() > 1) {
-                                long gapMin = Long.MAX_VALUE;
-                                long gapMax = 0;
-                                long gapTotal = 0;
-
-                                for (int i = 1; i < primos.size(); i++) {
-                                    long gap = primos.get(i) - primos.get(i-1);
-                                    gapMin = Math.min(gapMin, gap);
-                                    gapMax = Math.max(gapMax, gap);
-                                    gapTotal += gap;
-                                }
-
-                                double gapMedio = (double) gapTotal / (primos.size() - 1);
-                                resultado.append("   • Gap mínimo: ").append(gapMin).append("\n");
-                                resultado.append("   • Gap máximo: ").append(gapMax).append("\n");
-                                resultado.append("   • Gap médio: ").append(String.format("%.2f", gapMedio)).append("\n");
-                            }
-                            resultado.append("\n");
-
-                            // Calcular integral logarítmica Li(x) = ∫₂ˣ (1/ln(t)) dt
-                            double integralLogaritmica = calcularIntegralLogaritmica((int)n);
-                            resultado.append("📚 INTEGRAL LOGARÍTMICA (MAIS PRECISA):\n");
-                            resultado.append("   • Li(").append(n).append(") ≈ ").append(String.format("%.0f", integralLogaritmica)).append(" (integral logarítmica)\n");
-                            resultado.append("   • Real: ").append(contador).append("\n");
-                            resultado.append("   • Erro Li(x): ").append(String.format("%.2f%%", Math.abs(contador - integralLogaritmica) / contador * 100)).append("\n\n");
-
-                            // Calcular tempo de execução
-                            long endTime = System.currentTimeMillis();
-                            long tempoExecucao = endTime - startTime;
-                            resultado.append("⏱️ TEMPO DE EXECUÇÃO: ").append(String.format("%.3f", tempoExecucao / 1000.0)).append(" s\n");
-                            resultado.append("⏰ TIMESTAMP: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n");
-                            resultado.append("💡 Estatísticas completas de números primos\n");
-
                             pararCronometroOperacao(cronometroAtivo);
-
-                            // Salvar resultado e abrir visualizador
-                            salvarResultadoTemporario(resultado.toString(), "estatisticas_primos_completas");
+                            salvarResultadoTemporario(relatorioComum, "estatisticas_primos_completas");
 
                         } catch (Exception e) {
                             Log.e(TAG, "Erro nas estatísticas", e);
@@ -9473,36 +8447,12 @@ public class MainActivity extends AppCompatActivity {
                     // Executar aproximação logarítmica em thread separada
                     new Thread(() -> {
                         try {
-                            long startTime = System.currentTimeMillis();
-                            StringBuilder resultado = new StringBuilder();
-
-                            resultado.append("📈 APROXIMAÇÃO LOGARÍTMICA DE PRIMOS\n");
-                            resultado.append("====================================\n\n");
-                            resultado.append("🎯 LIMITE SUPERIOR: ").append(n).append("\n\n");
-
-                            // Calcular integral logarítmica para números grandes
-                            double integralLogaritmica = calcularIntegralLogaritmicaBigInteger(n);
-
-                            resultado.append("📚 INTEGRAL LOGARÍTMICA (MAIS PRECISA):\n");
-                            resultado.append("   • Li(").append(n).append(") ≈ ").append(String.format("%.0f", integralLogaritmica)).append("\n");
-
-                            // Calcular densidade usando a integral logarítmica
-                            double densidade = integralLogaritmica / n.doubleValue();
-                                resultado.append("   • Densidade estimada: ").append(String.format("%.8f%%", densidade * 100)).append("\n");
-                            resultado.append("   • Esta é a melhor aproximação conhecida\n");
-                            resultado.append("   • Erro típico: < 1% para números grandes\n\n");
-
-                            // Calcular tempo de execução
-                            long endTime = System.currentTimeMillis();
-                            long tempoExecucao = endTime - startTime;
-                            resultado.append("⏱️ TEMPO DE EXECUÇÃO: ").append(String.format("%.3f", tempoExecucao / 1000.0)).append(" s\n");
-                            resultado.append("⏰ TIMESTAMP: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date())).append("\n");
-                            resultado.append("💡 Aproximação logarítmica de números primos\n");
-
+                            String relatorioComum = primeApproximationNativo(n.toString());
+                            if (relatorioComum == null || relatorioComum.isEmpty()) {
+                                throw new IllegalArgumentException("Use um inteiro a partir de 2, com até 100.000 dígitos.");
+                            }
                             pararCronometroOperacao(cronometroAtivo);
-
-                            // Salvar resultado e abrir visualizador
-                            salvarResultadoTemporario(resultado.toString(), "aproximacao_logaritmica_primos");
+                            salvarResultadoTemporario(relatorioComum, "aproximacao_logaritmica_primos");
 
                         } catch (Exception e) {
                             Log.e(TAG, "Erro na aproximação logarítmica", e);
@@ -9614,6 +8564,16 @@ public class MainActivity extends AppCompatActivity {
             modoBuscaSequencial.setTextSize(16);
             modoGroup.addView(modoBuscaSequencial);
 
+            RadioButton modoParesLimite = new RadioButton(this);
+            modoParesLimite.setText("Perfeitos pares até um limite");
+            modoParesLimite.setId(5);
+            modoGroup.addView(modoParesLimite);
+
+            RadioButton modoParesDigitos = new RadioButton(this);
+            modoParesDigitos.setText("Perfeitos pares por quantidade de dígitos");
+            modoParesDigitos.setId(6);
+            modoGroup.addView(modoParesDigitos);
+
             containerInterno.addView(modoGroup);
 
             // Campos para modo verificar
@@ -9648,7 +8608,7 @@ public class MainActivity extends AppCompatActivity {
             ld.setPadding(dpUi(4), dpUi(4), dpUi(4), dpUi(4));
             layoutBuscarImpar.addView(ld);
             EditText inputDigitos = new EditText(this);
-            inputDigitos.setHint("Digite aqui (ex.: 100, 1000)");
+            inputDigitos.setHint("Dígitos de 1 a 12");
             inputDigitos.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
             inputDigitos.setText("");
             estilizarCampoEntrada(inputDigitos);
@@ -9690,7 +8650,7 @@ public class MainActivity extends AppCompatActivity {
             lds.setPadding(dpUi(4), dpUi(4), dpUi(4), dpUi(4));
             layoutBuscaSequencial.addView(lds);
             EditText inputDigitosSequencial = new EditText(this);
-            inputDigitosSequencial.setHint("Digite aqui (ex.: 1, 10, 100, 1000)");
+            inputDigitosSequencial.setHint("Dígitos iniciais de 1 a 12");
             inputDigitosSequencial.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
             inputDigitosSequencial.setText("");
             estilizarCampoEntrada(inputDigitosSequencial);
@@ -9699,34 +8659,15 @@ public class MainActivity extends AppCompatActivity {
             // Campo removido: Máximo de tentativas não é necessário para busca infinita
 
             TextView infoSequencial = new TextView(this);
-            infoSequencial.setText("🔄 BUSCA SEQUENCIAL CONTÍNUA\n" +
-                "🎯 Analisa número por número sequencialmente\n" +
-                "✅ Só imprime resultados quando encontrar um número perfeito\n" +
-                "🚀 Busca INFINITA até encontrar ou você parar\n" +
-                "💾 Salva progresso para continuar depois");
+            infoSequencial.setText("Busca exata de ímpares até 12 dígitos. O progresso fica salvo no aparelho.");
             infoSequencial.setPadding(15, 10, 15, 10);
             infoSequencial.setTextColor(Color.parseColor("#9C27B0"));
             layoutBuscaSequencial.addView(infoSequencial);
 
-            // Botão para parar a busca sequencial
-            Button btnPararBusca = new Button(this);
-            btnPararBusca.setText("🛑 PARAR BUSCA SEQUENCIAL");
-            btnPararBusca.setBackgroundColor(0xFFE91E63);
-            btnPararBusca.setTextColor(0xFFFFFFFF);
-            btnPararBusca.setPadding(20, 15, 20, 15);
-            btnPararBusca.setVisibility(View.GONE); // Inicialmente invisível
-
-            // Listener para parar a busca
-            btnPararBusca.setOnClickListener(v -> {
-                pararBuscaSequencial();
-                btnPararBusca.setVisibility(View.GONE);
-                Toast.makeText(this, "🛑 Busca sequencial interrompida!", Toast.LENGTH_LONG).show();
-            });
-
-            layoutBuscaSequencial.addView(btnPararBusca);
-
-            // Referência global para o botão
-            this.btnPararBuscaSequencial = btnPararBusca;
+            Button btnRetomar = new Button(this);
+            btnRetomar.setText("Continuar busca salva");
+            btnRetomar.setVisibility(proximoImparSalvo() > 0 ? View.VISIBLE : View.GONE);
+            layoutBuscaSequencial.addView(btnRetomar);
 
             containerInterno.addView(layoutBuscaSequencial);
 
@@ -9736,7 +8677,9 @@ public class MainActivity extends AppCompatActivity {
                 layoutBuscarImpar.setVisibility(View.GONE);
                 layoutBuscaSequencial.setVisibility(View.GONE);
 
-                if (checkedId == 1) {
+                if (checkedId == 1 || checkedId == 5 || checkedId == 6) {
+                    lvN.setText(checkedId == 5 ? "Limite superior"
+                        : checkedId == 6 ? "Quantidade de dígitos" : "Número a verificar");
                     layoutVerificar.setVisibility(View.VISIBLE);
                 } else if (checkedId == 2) {
                     layoutBuscarImpar.setVisibility(View.VISIBLE);
@@ -9747,11 +8690,16 @@ public class MainActivity extends AppCompatActivity {
 
             // Botão verificar - POSICIONADO ANTES DA ÁREA DE RESULTADO
             Button btnVerificar = new Button(this);
-            btnVerificar.setText("✨ Verificar Número Perfeito");
+            btnVerificar.setText("Calcular");
             btnVerificar.setBackgroundColor(0xFFFF9800);
             btnVerificar.setTextColor(0xFFFFFFFF);
             btnVerificar.setPadding(20, 15, 20, 15);
             containerInterno.addView(btnVerificar);
+            Button btnParar = new Button(this);
+            btnParar.setText("Parar e ver resultado");
+            btnParar.setVisibility(View.GONE);
+            btnParar.setOnClickListener(v -> interromperBuscaImpar.set(true));
+            containerInterno.addView(btnParar);
 
             // Área de resultado específica
             TextView areaResultado = new TextView(this);
@@ -9760,6 +8708,16 @@ public class MainActivity extends AppCompatActivity {
             areaResultado.setTextIsSelectable(true);
             areaResultado.setBackgroundColor(Color.WHITE);
             containerInterno.addView(areaResultado);
+            areaResultado.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View view) {}
+                @Override public void onViewDetachedFromWindow(View view) {
+                    interromperBuscaImpar.set(true);
+                }
+            });
+            btnRetomar.setOnClickListener(v -> {
+                long proximo = proximoImparSalvo();
+                if (proximo > 0) iniciarBuscaImpares(1, 0, true, proximo, areaResultado, btnParar, btnRetomar);
+            });
 
             // Adicionar container interno ao ScrollView
             scrollView.addView(containerInterno);
@@ -9771,7 +8729,30 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     int modo = modoGroup.getCheckedRadioButtonId();
 
-                    if (modo == 1) {
+                    if (modo == 5 || modo == 6) {
+                        long valor = parseBigInteger(inputN.getText().toString()).longValueExact();
+                        if (valor < 1 || (modo == 6 && valor > 10000)) {
+                            Toast.makeText(this, modo == 6 ? "Informe de 1 a 10.000 dígitos."
+                                : "Informe um limite positivo.", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        int operacao = modo == 5 ? 1 : 2; // PPF_PERFECT_BY_LIMIT / PPF_PERFECT_BY_DIGITS
+                        CronometroOperacaoHandle cronometro = iniciarCronometroOperacao(
+                            areaResultado, "Números Perfeitos", "Valor: " + valor);
+                        new Thread(() -> {
+                            try {
+                                String relatorio = perfectReportNativo(operacao, valor);
+                                if (relatorio == null || relatorio.isEmpty()) {
+                                    throw new IllegalStateException("Resultado indisponível.");
+                                }
+                                salvarResultadoTemporario(relatorio, "numeros_perfeitos_pares");
+                            } catch (Exception e) {
+                                runOnUiThread(() -> areaResultado.setText("Erro: " + e.getMessage()));
+                            } finally {
+                                pararCronometroOperacao(cronometro);
+                            }
+                        }).start();
+                    } else if (modo == 1) {
                         // Modo verificar
                         String nStr = inputN.getText().toString();
                         if (nStr.isEmpty()) {
@@ -9787,109 +8768,15 @@ public class MainActivity extends AppCompatActivity {
 
                         new Thread(() -> {
                             try {
-                                BigInteger n = parseBigInteger(nStr);
-                                StringBuilder resultado = new StringBuilder();
-                                resultado.append("🔍 ANÁLISE COMPLETA DO NÚMERO\n");
-                                resultado.append("==============================\n\n");
-                                resultado.append("Número analisado: ").append(n).append("\n");
-                                resultado.append("Dígitos: ").append(n.toString().length()).append("\n");
-                                resultado.append("Paridade: ").append(n.mod(BigInteger.TWO).equals(BigInteger.ZERO) ? "PAR" : "ÍMPAR").append("\n\n");
-
-                                // Análise de divisores para números pequenos
-                                if (n.toString().length() <= 8) {
-                                    resultado.append("📊 ANÁLISE DETALHADA DOS DIVISORES:\n");
-                                    resultado.append("====================================\n");
-
-                                    java.util.List<BigInteger> divisores = encontrarDivisores(n);
-                                    BigInteger somaDivisores = BigInteger.ZERO;
-
-                                    resultado.append("Divisores próprios encontrados:\n");
-                                    for (BigInteger divisor : divisores) {
-                                        resultado.append("  + ").append(divisor).append("\n");
-                                        somaDivisores = somaDivisores.add(divisor);
-                                    }
-
-                                    resultado.append("\nSoma dos divisores próprios: ").append(somaDivisores).append("\n");
-                                    resultado.append("Número original: ").append(n).append("\n");
-
-                                    if (somaDivisores.equals(n)) {
-                                        resultado.append("\n✅ RESULTADO: ").append(n).append(" É UM NÚMERO PERFEITO!\n\n");
-                                        if (n.mod(BigInteger.TWO).equals(BigInteger.ONE)) {
-                                            resultado.append("🚨 REVOLUÇÃO MATEMÁTICA!\n");
-                                            resultado.append("Primeiro número perfeito ÍMPAR descoberto!\n");
-                                            resultado.append("Este achado mudaria a matemática para sempre!\n\n");
-                                        } else {
-                                            resultado.append("✅ Número perfeito PAR (segue teorema de Euclides)\n\n");
-                                        }
-                                    } else {
-                                        resultado.append("\n❌ RESULTADO: ").append(n).append(" NÃO é perfeito\n");
-                                        resultado.append("Diferença: ").append(somaDivisores.subtract(n)).append("\n\n");
-
-                                        if (somaDivisores.compareTo(n) > 0) {
-                                            resultado.append("📈 Este número é ABUNDANTE (soma > número)\n");
-                                        } else {
-                                            resultado.append("📉 Este número é DEFICIENTE (soma < número)\n");
-                                        }
-                                    }
-                                } else {
-                                    // Para números grandes, usar método otimizado
-                                    resultado.append("📊 ANÁLISE OTIMIZADA (número muito grande):\n");
-                                    resultado.append("============================================\n");
-
-                                    boolean ehPerfeito = verificarNumeroPerfeito(n);
-                                    if (ehPerfeito) {
-                                        resultado.append("✅ ").append(n).append(" é um NÚMERO PERFEITO!\n\n");
-                                        if (n.mod(BigInteger.TWO).equals(BigInteger.ONE)) {
-                                            resultado.append("🚨 REVOLUÇÃO MATEMÁTICA!\n");
-                                            resultado.append("Primeiro número perfeito ÍMPAR descoberto!\n");
-                                        }
-                                    } else {
-                                        resultado.append("❌ ").append(n).append(" não é perfeito\n\n");
-
-                                        // Análise especial para números ímpares
-                                        if (n.mod(BigInteger.TWO).equals(BigInteger.ONE)) {
-                                            resultado.append("🔍 ANÁLISE ESPECIAL PARA NÚMEROS ÍMPARES:\n");
-                                            resultado.append("==========================================\n");
-                                            resultado.append("❓ Números perfeitos ímpares são um dos maiores mistérios da matemática\n");
-                                            resultado.append("🎯 Se existirem, devem ter pelo menos 8 fatores primos distintos\n");
-                                            resultado.append("🔬 Deve ser um número ímpar válido\n");
-                                            resultado.append("📚 Nenhum foi encontrado até hoje!\n\n");
-
-                                            resultado.append("💡 RECOMENDAÇÃO: Use o modo 'Buscar Ímpares' para explorar\n");
-                                            resultado.append("   números ímpares com propriedades especiais!\n\n");
-                                        }
-                                    }
+                                String decimal = parseBigInteger(nStr).toString();
+                                String relatorio = perfectVerifyNativo(decimal);
+                                if (relatorio == null || relatorio.isEmpty()) {
+                                    throw new IllegalArgumentException("Informe um inteiro positivo de até 10.000 dígitos.");
                                 }
-
-                                resultado.append("📚 NÚMEROS PERFEITOS CONHECIDOS:\n");
-                                resultado.append("================================\n");
-                                resultado.append("6 = 1 + 2 + 3 (PAR)\n");
-                                resultado.append("28 = 1 + 2 + 4 + 7 + 14 (PAR)\n");
-                                resultado.append("496 = 1 + 2 + 4 + 8 + 16 + 31 + 62 + 124 + 248 (PAR)\n");
-                                resultado.append("8128 = 1 + 2 + 4 + 8 + 16 + 32 + 64 + 127 + 254 + 508 + 1016 + 2032 + 4064 (PAR)\n");
-                                resultado.append("33550336 = [soma de 25 divisores] (PAR)\n");
-                                resultado.append("8589869056 = [soma de 33 divisores] (PAR)\n");
-                                resultado.append("137438691328 = [soma de 39 divisores] (PAR)\n");
-                                resultado.append("2305843008139952128 = [soma de 81 divisores] (PAR)\n");
-                                resultado.append("2658455991569831744654692615953842176 = [soma de 145 divisores] (PAR)\n");
-                                resultado.append("191561942608236107294793378084303638130997321548169216 = [soma de 321 divisores] (PAR)\n\n");
-
-                                resultado.append("🔬 TEOREMA DE EUCLIDES:\n");
-                                resultado.append("======================\n");
-                                resultado.append("Se 2^p - 1 é primo (primo de Mersenne), então 2^(p-1) × (2^p - 1) é perfeito.\n");
-                                resultado.append("Todos os números perfeitos pares conhecidos seguem esta fórmula.\n\n");
-
-                                resultado.append("❓ CONJECTURA DOS NÚMEROS PERFEITOS ÍMPARES:\n");
-                                resultado.append("==========================================\n");
-                                resultado.append("Não se sabe se existem números perfeitos ímpares.\n");
-                                                                    resultado.append("Se existirem, podem ter qualquer quantidade de dígitos.\n");
-                                resultado.append("Deve ter pelo menos 8 fatores primos distintos.\n\n");
-
-                                resultado.append("Timestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
                                 runOnUiThread(() -> {
                                     pararCronometroOperacao(cronometroAtivo);
-                                    areaResultado.setText(resultado.toString());
+                                    areaResultado.setText(relatorio);
+                                    salvarResultadoTemporario(relatorio, "numeros_perfeitos_verificacao");
                                 });
 
                             } catch (Exception e) {
@@ -9900,272 +8787,15 @@ public class MainActivity extends AppCompatActivity {
                             }
                         }).start();
 
-                    } else if (modo == 2) {
-                        // Modo buscar ímpares
-                        String digitosStr = inputDigitos.getText().toString();
-                        String tentativasStr = inputMaxTentativas.getText().toString();
-
-                        if (digitosStr.isEmpty() || tentativasStr.isEmpty()) {
-                            Toast.makeText(this, "Preencha todos os campos", Toast.LENGTH_SHORT).show();
+                    } else if (modo == 2 || modo == 4) {
+                        boolean sequencial = modo == 4;
+                        int digitos = Integer.parseInt((sequencial ? inputDigitosSequencial : inputDigitos).getText().toString());
+                        int tentativas = sequencial ? 0 : Integer.parseInt(inputMaxTentativas.getText().toString());
+                        if (digitos < 1 || digitos > 12 || (!sequencial && (tentativas < 1 || tentativas > 100000))) {
+                            Toast.makeText(this, "Use de 1 a 12 dígitos e até 100.000 tentativas.", Toast.LENGTH_SHORT).show();
                             return;
                         }
-
-                        int digitos = Integer.parseInt(digitosStr);
-                        int maxTentativas = Integer.parseInt(tentativasStr);
-
-                        CronometroOperacaoHandle cronometroAtivo = iniciarCronometroOperacao(
-                            areaResultado,
-                            "Busca de Números Perfeitos Ímpares",
-                            "Dígitos: " + digitos,
-                            "Máx. tentativas: " + maxTentativas
-                        );
-
-                        new Thread(() -> {
-                            try {
-                                StringBuilder resultado = new StringBuilder();
-                                resultado.append("BUSCA POR NÚMEROS PERFEITOS ÍMPARES\n");
-                                resultado.append("==============================================\n\n");
-                                resultado.append("Parâmetros:\n");
-                                resultado.append("- Dígitos: ").append(digitos).append("\n");
-                                resultado.append("- Máximo de tentativas: ").append(maxTentativas).append("\n");
-                                resultado.append("- FOCO: Apenas números ÍMPARES\n");
-                                resultado.append("- Suporte a números de até 10.000 dígitos\n\n");
-
-                                resultado.append("🎯 OBJETIVO: Descobrir se existem números perfeitos ímpares!\n");
-                                resultado.append("🔬 ÁREA DE PESQUISA: Fronteira da matemática\n");
-                                resultado.append("📚 CONTEXTO: Todos os números perfeitos conhecidos são pares\n\n");
-
-                                resultado.append("Iniciando busca especializada...\n");
-                                resultado.append("================================\n");
-
-                                // Buscar APENAS números perfeitos ÍMPARES
-                                java.util.List<BigInteger> candidatos = buscarNumerosPerfeitosImparesPorDigitos(digitos, maxTentativas);
-
-                                if (candidatos.isEmpty()) {
-                                    resultado.append("❌ Nenhum número perfeito ÍMPAR encontrado com ").append(digitos).append(" dígitos.\n\n");
-                                    resultado.append("Análise dos Resultados:\n");
-                                    resultado.append("======================\n");
-                                    resultado.append("🔍 Números testados: ").append(maxTentativas).append(" candidatos ímpares\n");
-                                    resultado.append("❓ Resultado: Nenhum número perfeito ímpar encontrado\n");
-                                    resultado.append("📊 Isso pode indicar:\n");
-                                    resultado.append("   • Números perfeitos ímpares não existem\n");
-                                    resultado.append("   • São extremamente raros\n");
-                                    resultado.append("   • Estão além do alcance da busca atual\n\n");
-
-                                    resultado.append("🎯 PRÓXIMOS PASSOS:\n");
-                                    resultado.append("   • Aumentar o número de tentativas\n");
-                                    resultado.append("   • Testar números com mais dígitos\n");
-                                    resultado.append("   • Usar estratégias de busca mais sofisticadas\n\n");
-                                } else {
-                                    resultado.append("🚨 CANDIDATOS ENCONTRADOS!\n");
-                                    resultado.append("✅ Encontrados ").append(candidatos.size()).append(" candidatos ÍMPARES:\n\n");
-
-                                    resultado.append("🔬 INICIANDO VERIFICAÇÃO AUTOMÁTICA DE CADA CANDIDATO...\n");
-                                    resultado.append("=====================================================\n\n");
-
-                                    for (int i = 0; i < candidatos.size(); i++) {
-                                        BigInteger candidato = candidatos.get(i);
-                                        resultado.append("🔍 CANDIDATO ").append(i + 1).append(":\n");
-                                        resultado.append("   Número: ").append(candidato).append("\n");
-                                        resultado.append("   Dígitos: ").append(candidato.toString().length()).append("\n");
-                                        resultado.append("   Paridade: ÍMPAR ✅\n\n");
-
-                                        resultado.append("   📊 VERIFICAÇÃO AUTOMÁTICA EM ANDAMENTO...\n");
-                                        resultado.append("   ======================================\n");
-
-                                        // VERIFICAÇÃO AUTOMÁTICA DO CANDIDATO
-                                        try {
-                                            // Para números pequenos, análise completa
-                                            if (candidato.toString().length() <= 8) {
-                                                resultado.append("   🧮 ANÁLISE COMPLETA DOS DIVISORES:\n");
-                                                java.util.List<BigInteger> divisores = encontrarDivisores(candidato);
-                                                BigInteger somaDivisores = BigInteger.ZERO;
-
-                                                resultado.append("   Divisores próprios encontrados:\n");
-                                                for (BigInteger divisor : divisores) {
-                                                    resultado.append("     + ").append(divisor).append("\n");
-                                                    somaDivisores = somaDivisores.add(divisor);
-                                                }
-
-                                                resultado.append("   Soma dos divisores próprios: ").append(somaDivisores).append("\n");
-                                                resultado.append("   Diferença: ").append(somaDivisores.subtract(candidato)).append("\n");
-
-                                                if (somaDivisores.equals(candidato)) {
-                                                    resultado.append("   🚨 REVOLUÇÃO MATEMÁTICA: NÚMERO PERFEITO ÍMPAR!\n");
-                                                    resultado.append("   🎉 Este achado mudaria a matemática para sempre!\n");
-                                                } else if (somaDivisores.compareTo(candidato) > 0) {
-                                                    resultado.append("   📈 Status: ABUNDANTE (soma > número)\n");
-                                                } else {
-                                                    resultado.append("   📉 Status: DEFICIENTE (soma < número)\n");
-                                                }
-
-                                            } else {
-                                                // Para números grandes, verificação otimizada
-                                                resultado.append("   🧮 VERIFICAÇÃO OTIMIZADA (número muito grande):\n");
-
-                                                // Verificar se é realmente perfeito
-                                                boolean ehPerfeito = verificarNumeroPerfeito(candidato);
-
-                                                if (ehPerfeito) {
-                                                    resultado.append("   🚨 REVOLUÇÃO MATEMÁTICA: NÚMERO PERFEITO ÍMPAR!\n");
-                                                    resultado.append("   🎉 Este achado mudaria a matemática para sempre!\n");
-                                                    resultado.append("   🔬 Primeiro número perfeito ímpar descoberto!\n");
-                                                } else {
-                                                    resultado.append("   ❌ Status: NÃO é perfeito\n");
-                                                    resultado.append("   📊 Estrutura: Múltiplos fatores primos\n");
-                                                    resultado.append("   🎯 Potencial: Alto (baseado em propriedades matemáticas)\n");
-                                                }
-
-                                                // Análise de fatores para números grandes
-                                                resultado.append("   🔍 ANÁLISE DE ESTRUTURA:\n");
-                                                resultado.append("   - Verificação de potencial: ✅\n");
-                                                resultado.append("   - Estrutura de fatores: Complexa\n");
-                                                resultado.append("   - Múltiplos fatores primos: ✅\n");
-                                                resultado.append("   - Propriedades matemáticas: Satisfeitas\n");
-                                            }
-
-                                            resultado.append("   ✅ VERIFICAÇÃO COMPLETA\n\n");
-
-                                        } catch (Exception e) {
-                                            resultado.append("   ⚠️ Erro na verificação: ").append(e.getMessage()).append("\n");
-                                            resultado.append("   🔍 Recomendação: Verificação manual necessária\n\n");
-                                        }
-                                    }
-
-                                    resultado.append("🎯 RESUMO DA VERIFICAÇÃO:\n");
-                                    resultado.append("========================\n");
-                                    resultado.append("• Total de candidatos verificados: ").append(candidatos.size()).append("\n");
-                                    resultado.append("• Verificação automática: ✅ COMPLETA\n");
-                                    resultado.append("• Análise de divisores: ✅ REALIZADA\n");
-                                    resultado.append("• Status de cada candidato: ✅ VERIFICADO\n\n");
-
-                                    resultado.append("🔬 VERIFICAÇÃO CRÍTICA:\n");
-                                    resultado.append("   • Cada candidato foi verificado automaticamente\n");
-                                    resultado.append("   • Análise de divisores foi realizada\n");
-                                    resultado.append("   • Status de perfeição foi determinado\n");
-                                    resultado.append("   • Resultados estão documentados acima\n\n");
-                                }
-
-                                resultado.append("Contexto Matemático:\n");
-                                resultado.append("===================\n");
-                                resultado.append("📚 Todos os números perfeitos conhecidos são pares\n");
-                                resultado.append("🔍 Números perfeitos ímpares são um dos maiores mistérios da matemática\n");
-                                resultado.append("🎯 Se existirem, devem ter pelo menos 8 fatores primos distintos\n");
-                                resultado.append("🚀 Sua descoberta seria revolucionária!\n\n");
-
-                                resultado.append("Timestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
-                                pararCronometroOperacao(cronometroAtivo);
-
-                                // Salvar em arquivo temporário e abrir com visualizador HTML
-                                salvarResultadoTemporario(resultado.toString(), "numeros_perfeitos_busca_impares");
-
-                            } catch (Exception e) {
-                                runOnUiThread(() -> {
-                                    pararCronometroOperacao(cronometroAtivo);
-                                    areaResultado.setText("Erro: " + e.getMessage());
-                                });
-                            }
-                        }).start();
-
-                    } else if (modo == 4) {
-                        // Modo busca sequencial contínua
-                        String digitosStr = inputDigitosSequencial.getText().toString();
-
-                        if (digitosStr.isEmpty()) {
-                            Toast.makeText(this, "Digite o número de dígitos para começar", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-
-                        int digitos = Integer.parseInt(digitosStr);
-                        // Busca infinita - sem limite de tentativas
-
-                        areaResultado.setText("🔄 Iniciando busca sequencial contínua por números perfeitos ímpares...");
-
-                        // Mostrar botão de parar
-                        if (btnPararBuscaSequencial != null) {
-                            btnPararBuscaSequencial.setVisibility(View.VISIBLE);
-                        }
-
-                        new Thread(() -> {
-                            try {
-                                StringBuilder resultado = new StringBuilder();
-                                resultado.append("BUSCA SEQUENCIAL CONTÍNUA - NÚMEROS PERFEITOS ÍMPARES\n");
-                                resultado.append("====================================================\n\n");
-                                resultado.append("Parâmetros:\n");
-                                resultado.append("- Dígitos para começar: ").append(digitos).append("\n");
-                                resultado.append("- Limite de tentativas: INFINITO (busca contínua)\n");
-                                resultado.append("- FOCO: Apenas números ÍMPARES\n");
-                                resultado.append("- MÉTODO: Busca sequencial número por número\n");
-                                resultado.append("- ESTILO: Similar à conjectura de Legendre\n\n");
-
-                                resultado.append("🎯 OBJETIVO: Encontrar o primeiro número perfeito ímpar!\n");
-                                resultado.append("🔬 MÉTODO: Análise sequencial e sistemática\n");
-                                resultado.append("📚 CONTEXTO: Fronteira da matemática\n\n");
-
-                                resultado.append("Iniciando busca sequencial...\n");
-                                resultado.append("============================\n");
-
-                                // Busca sequencial contínua
-                                java.util.List<BigInteger> numerosPerfeitosEncontrados = buscarSequencialNumerosPerfeitosImpares(digitos);
-
-                                if (numerosPerfeitosEncontrados.isEmpty()) {
-                                    resultado.append("❌ Nenhum número perfeito ÍMPAR encontrado com ").append(digitos).append(" dígitos.\n\n");
-                                    resultado.append("Análise dos Resultados:\n");
-                                    resultado.append("======================\n");
-                                    resultado.append("🔍 Números testados: Busca sequencial contínua em andamento\n");
-                                    resultado.append("❓ Resultado: Nenhum número perfeito ímpar encontrado ainda\n");
-                                    resultado.append("📊 Isso pode indicar:\n");
-                                    resultado.append("   • Números perfeitos ímpares não existem\n");
-                                    resultado.append("   • São extremamente raros\n");
-                                    resultado.append("   • Estão além do alcance da busca atual\n\n");
-
-                                    resultado.append("🎯 PRÓXIMOS PASSOS:\n");
-                                    resultado.append("   • Continuar a busca sequencial indefinidamente\n");
-                                    resultado.append("   • Testar números com mais dígitos\n");
-                                    resultado.append("   • A busca não para até encontrar!\n\n");
-                                } else {
-                                    resultado.append("🚨 REVOLUÇÃO MATEMÁTICA!\n");
-                                    resultado.append("✅ ENCONTRADOS ").append(numerosPerfeitosEncontrados.size()).append(" NÚMEROS PERFEITOS ÍMPARES:\n\n");
-
-                                    for (int i = 0; i < numerosPerfeitosEncontrados.size(); i++) {
-                                        BigInteger numeroPerfeito = numerosPerfeitosEncontrados.get(i);
-                                        resultado.append("🎉 NÚMERO PERFEITO ÍMPAR ").append(i + 1).append(":\n");
-                                        resultado.append("   Número: ").append(numeroPerfeito).append("\n");
-                                        resultado.append("   Dígitos: ").append(numeroPerfeito.toString().length()).append("\n");
-                                        resultado.append("   Paridade: ÍMPAR ✅\n");
-                                        resultado.append("   Status: PERFEITO ✅\n\n");
-
-                                        resultado.append("   🚨 IMPACTO CIENTÍFICO:\n");
-                                        resultado.append("   • Primeiro número perfeito ímpar descoberto!\n");
-                                        resultado.append("   • Revolução na matemática!\n");
-                                        resultado.append("   • Mudança nos livros didáticos!\n");
-                                        resultado.append("   • Reconhecimento internacional!\n\n");
-                                    }
-
-                                    resultado.append("🔬 VERIFICAÇÃO CRÍTICA:\n");
-                                    resultado.append("   • Cada número foi verificado automaticamente\n");
-                                    resultado.append("   • Análise de divisores foi realizada\n");
-                                    resultado.append("   • Status de perfeição foi confirmado\n");
-                                    resultado.append("   • Documentação científica está pronta\n\n");
-                                }
-
-                                resultado.append("Contexto Matemático:\n");
-                                resultado.append("===================\n");
-                                resultado.append("📚 Todos os números perfeitos conhecidos são pares\n");
-                                resultado.append("🔍 Números perfeitos ímpares são um dos maiores mistérios da matemática\n");
-                                resultado.append("🎯 Se existirem, devem ter pelo menos 8 fatores primos distintos\n");
-                                resultado.append("🚀 Sua descoberta seria revolucionária!\n\n");
-
-                                resultado.append("Timestamp: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
-
-                                // Salvar em arquivo temporário e abrir com visualizador HTML
-                                salvarResultadoTemporario(resultado.toString(), "numeros_perfeitos_busca_sequencial");
-
-                            } catch (Exception e) {
-                                runOnUiThread(() -> areaResultado.setText("Erro: " + e.getMessage()));
-                            }
-                        }).start();
+                        iniciarBuscaImpares(digitos, tentativas, sequencial, 0, areaResultado, btnParar, btnRetomar);
                     }
 
                 } catch (NumberFormatException e) {
@@ -10183,6 +8813,79 @@ public class MainActivity extends AppCompatActivity {
             erro.setPadding(20, 20, 20, 20);
             contentContainer.addView(erro);
         }
+    }
+
+    private long proximoImparSalvo() {
+        return getSharedPreferences("numeros_perfeitos_sequencial", MODE_PRIVATE).getLong("proximo_exato", 0);
+    }
+
+    private void iniciarBuscaImpares(int digitos, int tentativas, boolean sequencial, long retomar,
+                                     TextView areaResultado, Button btnParar, Button btnRetomar) {
+        if (!buscaImparEmAndamento.compareAndSet(false, true)) return;
+        interromperBuscaImpar.set(false);
+        btnParar.setVisibility(View.VISIBLE);
+        btnRetomar.setEnabled(false);
+        areaResultado.setText("Testando candidatos ímpares…");
+        rolarConteudoParaView(areaResultado);
+
+        new Thread(() -> {
+            long testados = 0;
+            long encontrado = 0;
+            long limite = 999_999_999_999L;
+            long proximo = retomar;
+            String estado;
+            SharedPreferences prefs = getSharedPreferences("numeros_perfeitos_sequencial", MODE_PRIVATE);
+            try {
+                long base = 1;
+                for (int i = 1; i < digitos; i++) base *= 10;
+                long primeiro = base | 1L;
+                if (!sequencial) limite = base * 10 - 1;
+                long candidatos = (limite - primeiro) / 2 + 1;
+                long total = Math.min(tentativas, candidatos);
+                if (proximo <= 0) {
+                    proximo = sequencial ? primeiro
+                            : primeiro + 2 * java.util.concurrent.ThreadLocalRandom.current().nextLong(candidatos);
+                }
+                long ultimaAtualizacao = android.os.SystemClock.elapsedRealtime();
+                while (!interromperBuscaImpar.get() && encontrado == 0
+                        && (sequencial ? proximo <= limite : testados < total)) {
+                    if (proximo > limite) proximo = primeiro;
+                    int lote = sequencial ? 64 : (int) Math.min(64, total - testados);
+                    long[] resultado = scanOddPerfectNativo(proximo, limite, lote);
+                    if (resultado == null) throw new IllegalStateException("Não foi possível verificar o próximo lote.");
+                    proximo = resultado[0];
+                    encontrado = resultado[1];
+                    testados += resultado[2];
+                    long agora = android.os.SystemClock.elapsedRealtime();
+                    if (agora - ultimaAtualizacao >= 250) {
+                        ultimaAtualizacao = agora;
+                        if (sequencial) prefs.edit().putLong("proximo_exato", proximo <= limite && encontrado == 0 ? proximo : 0).apply();
+                        long progresso = testados;
+                        runOnUiThread(() -> areaResultado.setText("Candidatos testados: " + progresso));
+                    }
+                }
+                if (encontrado > 0) {
+                    estado = "Candidato: " + encontrado + ". Confirme o resultado por um método independente.";
+                } else {
+                    String prefixo = interromperBuscaImpar.get() ? "Busca interrompida. " : "";
+                    estado = prefixo + "Nenhum número perfeito ímpar entre os candidatos testados.";
+                }
+            } catch (Exception e) {
+                estado = "Não foi possível terminar a busca: " + e.getMessage();
+            }
+            if (sequencial) prefs.edit().putLong("proximo_exato", proximo <= limite && encontrado == 0 ? proximo : 0).apply();
+            String relatorio = "BUSCA POR PERFEITOS ÍMPARES\n\nCandidatos testados: " + testados + "\n\n" + estado;
+            runOnUiThread(() -> {
+                buscaImparEmAndamento.set(false);
+                btnParar.setVisibility(View.GONE);
+                btnRetomar.setVisibility(proximoImparSalvo() > 0 ? View.VISIBLE : View.GONE);
+                btnRetomar.setEnabled(true);
+                areaResultado.setText(relatorio);
+                if (areaResultado.isShown() && hasWindowFocus()) {
+                    salvarResultadoTemporario(relatorio, "numeros_perfeitos_impares");
+                }
+            });
+        }).start();
     }
 
     private void criarInterfaceSegurancaDigital() {
@@ -10549,7 +9252,7 @@ public class MainActivity extends AppCompatActivity {
                         resultado.append("   • Hash original: ").append(gerarSHA256(mensagem)).append("\n");
                         resultado.append("   • Mensagem modificada: ").append(mensagemModificada).append("\n");
                         resultado.append("   • Hash modificado: ").append(gerarSHA256(mensagemModificada)).append("\n");
-                        resultado.append("   • Diferença: ").append(calcularDiferencaHash(gerarSHA256(mensagem), gerarSHA256(mensagemModificada))).append("%\n\n");
+                        resultado.append("   • Diferença nos caracteres hexadecimais: ").append(calcularDiferencaHash(gerarSHA256(mensagem), gerarSHA256(mensagemModificada))).append("%\n\n");
 
                         // Calcular tempo de execução
                         long endTime = System.currentTimeMillis();
@@ -11004,8 +9707,8 @@ public class MainActivity extends AppCompatActivity {
                     final String entradaOriginal = inputText.trim();
                     // Mesmo fluxo numérico: literal ou expressão (+, -, *, /, %, ^, parênteses)
                     BigInteger n = parseBigIntegerOuExpressao(entradaOriginal);
-                    if (n.compareTo(BigInteger.ONE) < 0) {
-                        Toast.makeText(this, "Digite um número ≥ 1", Toast.LENGTH_SHORT).show();
+                    if (n.signum() < 0) {
+                        Toast.makeText(this, "Digite um inteiro não negativo.", Toast.LENGTH_SHORT).show();
                         return;
                     }
 
@@ -11063,70 +9766,21 @@ public class MainActivity extends AppCompatActivity {
                             // Resultado principal: apenas primalidade
                             resultado.append("✅ RESULTADO DO TESTE\n");
 
-                            java.util.List<BigInteger> fatoresPequenos = encontrarFatoresPequenosBigInteger(n, 1000);
-                            // Só conta divisor “útil” se for próprio (1 < f < n). Para n primo, o trial
-                            // até 1000 acaba extraindo o próprio n como fator, o que não prova composto.
-                            boolean encontrouFatorPequeno = false;
-                            for (BigInteger f : fatoresPequenos) {
-                                if (f.compareTo(BigInteger.ONE) > 0 && f.compareTo(n) < 0) {
-                                    encontrouFatorPequeno = true;
-                                    break;
-                                }
-                            }
-
-                            if (n.equals(BigInteger.ONE)) {
-                                resultado.append("   • Status: 1 não é considerado primo nem composto\n");
-                                resultado.append("   • Motivo: Definição matemática padrão\n\n");
-                            } else if (!encontrouFatorPequeno && ehPrimoBigInteger(n)) {
-                                resultado.append("   • Status: ✅ É PRIMO!\n\n");
-                                resultado.append("\n");
+                            if (n.compareTo(BigInteger.TWO) < 0) {
+                                resultado.append("   • Status: ").append(n)
+                                    .append(" não é considerado primo nem composto\n\n");
+                            } else if (bitsNumero <= 64 ? ehPrimo64Nativo(n.longValue())
+                                    : testarPrimalidadeGiganteNativo(n.toString(), 25)) {
+                                resultado.append(bitsNumero <= 64
+                                    ? "   • Status: ✅ É PRIMO (teste determinístico)\n\n"
+                                    : "   • Status: PROVAVELMENTE PRIMO\n\n");
                             } else {
                                 resultado.append("   • Status: ❌ É COMPOSTO\n\n");
-
-                                // Manter apenas a fatoração para números compostos
                                 resultado.append("🔍 FATORAÇÃO\n");
-
-                                if (n.toString().length() <= 15) {
-                                    // Fatoração para números pequenos
-                                    java.util.List<BigInteger> fatores = fatorarBigIntegerPorDivisao(n);
-
-                                resultado.append("   • Fatores primos: ");
-                                    for (int j = 0; j < fatores.size(); j++) {
-                                        if (j > 0) resultado.append(" × ");
-                                        resultado.append(fatores.get(j));
-                                }
-                                resultado.append("\n");
-                                } else if (encontrouFatorPequeno) {
-                                    BigInteger restante = dividirPorFatoresBigInteger(n, fatoresPequenos);
-
-                                    if (restante.compareTo(BigInteger.ONE) > 0 && restante.toString().length() <= 15) {
-                                        java.util.List<BigInteger> fatoresRestantes = fatorarBigIntegerPorDivisao(restante);
-                                        fatoresPequenos.addAll(fatoresRestantes);
-                                        restante = BigInteger.ONE;
-                                    }
-
-                                    resultado.append("   • Fatores pequenos encontrados (até 1000): ");
-                                    for (int j = 0; j < fatoresPequenos.size(); j++) {
-                                        if (j > 0) resultado.append(" × ");
-                                        resultado.append(fatoresPequenos.get(j));
-                                    }
-                                    resultado.append("\n");
-
-                                    if (restante.equals(BigInteger.ONE)) {
-                                        resultado.append("   • Situação: fatoração concluída com sucesso\n");
-                                    } else {
-                                        resultado.append("   • Cofator restante: ").append(restante).append("\n");
-                                        resultado.append("   • Situação: fatoração parcial concluída\n");
-                                        resultado.append("   • Aviso: embora o valor não seja primo, a fatoração completa do cofator restante é impraticável no momento.\n");
-                                        resultado.append("   • Explicação: o número revelou divisores pequenos, mas o restante não expôs fatores simples e exigiria uma busca muito mais pesada.\n");
-                                    }
-                                } else {
-                                    resultado.append("   • Nenhum divisor pequeno até 1000 foi encontrado\n");
-                                    resultado.append("   • Aviso: embora o valor não seja primo, sua fatoração é impraticável no momento.\n");
-                                    resultado.append("   • Explicação: o teste de primalidade consegue mostrar que o número é composto, mas isso não significa que os fatores grandes possam ser recuperados rapidamente.\n");
-                                    resultado.append("   • Recomendação: se quiser explorar mais, tente a função de fatoração dedicada em casos menores ou com estrutura favorável.\n");
-                                }
-                                resultado.append("\n");
+                                String fatores = factorReportNativo(n.toString());
+                                resultado.append(fatores == null || fatores.isEmpty()
+                                    ? "Não foi possível preparar a fatoração."
+                                    : fatores).append("\n\n");
                             }
 
                             // Calcular tempo de execução
@@ -11547,64 +10201,6 @@ public class MainActivity extends AppCompatActivity {
         return n;
     }
 
-    private java.util.List<BigInteger> fatorarBigIntegerPorDivisao(BigInteger n) {
-        java.util.List<BigInteger> fatores = new java.util.ArrayList<>();
-        BigInteger numero = n;
-        BigInteger divisor = BigInteger.TWO;
-
-        while (divisor.multiply(divisor).compareTo(numero) <= 0) {
-            while (numero.mod(divisor).equals(BigInteger.ZERO)) {
-                fatores.add(divisor);
-                numero = numero.divide(divisor);
-            }
-            divisor = divisor.add(BigInteger.ONE);
-        }
-
-        if (numero.compareTo(BigInteger.ONE) > 0) {
-            fatores.add(numero);
-        }
-
-        return fatores;
-    }
-
-    private java.util.List<BigInteger> encontrarFatoresPequenosBigInteger(BigInteger n, int limite) {
-        java.util.List<BigInteger> fatores = new java.util.ArrayList<>();
-        if (n.compareTo(BigInteger.TWO) < 0) {
-            return fatores;
-        }
-
-        BigInteger restante = n;
-        BigInteger dois = BigInteger.TWO;
-        while (restante.mod(dois).equals(BigInteger.ZERO)) {
-            fatores.add(dois);
-            restante = restante.divide(dois);
-        }
-
-        for (int i = 3; i <= limite && restante.compareTo(BigInteger.ONE) > 0; i += 2) {
-            if (!ehPrimo(i)) {
-                continue;
-            }
-
-            BigInteger divisor = BigInteger.valueOf(i);
-            while (restante.mod(divisor).equals(BigInteger.ZERO)) {
-                fatores.add(divisor);
-                restante = restante.divide(divisor);
-            }
-        }
-
-        return fatores;
-    }
-
-    private BigInteger dividirPorFatoresBigInteger(BigInteger n, java.util.List<BigInteger> fatores) {
-        BigInteger restante = n;
-        for (BigInteger fator : fatores) {
-            if (!fator.equals(BigInteger.ZERO) && restante.mod(fator).equals(BigInteger.ZERO)) {
-                restante = restante.divide(fator);
-            }
-        }
-        return restante;
-    }
-
     private boolean deveUsarRotaNativaPrimos(int bits) {
         return bits > LIMIAR_BITS_ROTA_NATIVA;
     }
@@ -11618,14 +10214,21 @@ public class MainActivity extends AppCompatActivity {
         return File.createTempFile(prefixo, ".txt", dir);
     }
 
-    private String executarJobNativoPrimosGigantes(int bits, int quantidade, int threads, java.util.function.Consumer<String> onStatus, File arquivoSaidaPrimos) {
+    private synchronized String executarJobNativoPrimosGigantes(int bits, int quantidade, int threads, java.util.function.Consumer<String> onStatus, File arquivoSaidaPrimos, boolean modoAleatorio) {
         if (arquivoSaidaPrimos == null) {
             throw new IllegalArgumentException("arquivoSaidaPrimos");
         }
-        iniciarGeracaoPrimosGigantesJob(bits, quantidade, threads, arquivoSaidaPrimos.getAbsolutePath());
+        if (modoAleatorio) {
+            if (!iniciarPrimosAleatoriosJob(bits, quantidade, arquivoSaidaPrimos.getAbsolutePath())) {
+                throw new IllegalStateException("Não foi possível iniciar a geração.");
+            }
+        } else {
+            iniciarGeracaoPrimosGigantesJob(bits, quantidade, threads, arquivoSaidaPrimos.getAbsolutePath());
+        }
         while (!geracaoPrimosGigantesJobConcluido()) {
             if (cancelarOperacaoAtual.get()) {
                 cancelarGeracaoPrimosGigantesJob();
+                if (modoAleatorio) return obterResultadoGeracaoPrimosGigantesJob();
                 throw new RuntimeException("Busca nativa cancelada pelo usuário");
             }
             if (onStatus != null) {
@@ -11675,7 +10278,7 @@ public class MainActivity extends AppCompatActivity {
             throw new RuntimeException(e);
         }
         try {
-            executarJobNativoPrimosGigantes(bits, quantidade, 0, null, out);
+            executarJobNativoPrimosGigantes(bits, quantidade, 0, null, out, false);
             List<BigInteger> primos = lerPrimosDecimaisDoArquivo(out, quantidade);
             if (primos.size() < quantidade) {
                 throw new RuntimeException("Rota nativa retornou apenas " + primos.size() + " de " + quantidade + " primos");
@@ -11715,36 +10318,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return true;
-    }
-
-    private void anexarResultadoPrimosAleatorios(
-        StringBuilder resultado,
-        List<BigInteger> primosEncontrados,
-        int quantidade,
-        int tentativas,
-        int numThreads
-    ) {
-        int encontrados = primosEncontrados.size();
-
-        resultado.append("✅ RESULTADOS:\n");
-        resultado.append("==============\n\n");
-
-        if (encontrados > 0) {
-            for (int i = 0; i < primosEncontrados.size(); i++) {
-                BigInteger primo = primosEncontrados.get(i);
-                resultado.append("🔢 Primo #").append(i + 1).append(":\n");
-                resultado.append("   • Valor: ").append(primo).append("\n");
-                resultado.append("   • Bits: ").append(primo.bitLength()).append("\n");
-                resultado.append("   • Dígitos: ").append(primo.toString().length()).append("\n\n");
-            }
-        } else {
-            resultado.append("❌ Nenhum primo foi encontrado em ").append(tentativas).append(" tentativas.\n");
-            resultado.append("💡 Tente aumentar o número de tentativas ou reduzir o tamanho em bits.\n\n");
-        }
-
-        resultado.append("📊 ESTATÍSTICAS:\n");
-        resultado.append("=================\n");
-        resultado.append("   • Primos encontrados: ").append(encontrados).append("/").append(quantidade).append("\n");
     }
 
     private CronometroOperacaoHandle iniciarCronometroOperacao(TextView alvo, String titulo, String... detalhes) {
@@ -12103,7 +10676,141 @@ public class MainActivity extends AppCompatActivity {
     private static final List<File> arquivosTemporarios = new ArrayList<>();
 
     // Método auxiliar para salvar resultado temporário (com permissões corretas)
+    private void abrirRelatorio(String titulo, String resultado, String tipo) {
+        if (isFinishing() || isDestroyed()) return;
+        WebView preview = new WebView(this);
+        preview.getSettings().setAllowFileAccess(false);
+        preview.getSettings().setAllowContentAccess(false);
+        preview.getSettings().setBlockNetworkLoads(true);
+        preview.getSettings().setJavaScriptEnabled(true);
+        preview.loadDataWithBaseURL(null, gerarHTMLResultado(titulo, resultado, tipo),
+            "text/html", "UTF-8", null);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(preview)
+            .setNegativeButton("Fechar", null)
+            .setNeutralButton("Copiar", null)
+            .setPositiveButton("PDF", null)
+            .create();
+        File[] pdf = {null};
+        dialog.setOnDismissListener(ignored -> {
+            if (preview.getParent() instanceof ViewGroup) {
+                ((ViewGroup) preview.getParent()).removeView(preview);
+            }
+            preview.destroy();
+        });
+        dialog.show();
+        dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,
+            (int) (getWindow().getDecorView().getHeight() * 0.92f));
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(view -> {
+            ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+            try {
+                clipboard.setPrimaryClip(ClipData.newPlainText(titulo, resultado));
+                Toast.makeText(this, "Resultado copiado", Toast.LENGTH_SHORT).show();
+            } catch (RuntimeException e) {
+                Toast.makeText(this, "Resultado muito grande para copiar. Use o PDF.",
+                    Toast.LENGTH_LONG).show();
+            }
+        });
+        Button pdfButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        pdfButton.setOnClickListener(view -> {
+            PopupMenu menu = new PopupMenu(this, view);
+            menu.getMenu().add(0, 1, 0, "Salvar PDF");
+            menu.getMenu().add(0, 2, 1, "Compartilhar PDF");
+            menu.setOnMenuItemClickListener(item -> {
+                boolean compartilhar = item.getItemId() == 2;
+                if (pdf[0] != null && pdf[0].isFile()) {
+                    abrirAcaoPdf(pdf[0], compartilhar);
+                    return true;
+                }
+                pdfButton.setEnabled(false);
+                pdfButton.setText("Gerando...");
+                new Thread(() -> {
+                    try {
+                        File pasta = new File(getCacheDir(), "temp_primos/pdf/" + java.util.UUID.randomUUID());
+                        File arquivo = PPFResultPdf.write(getApplicationContext(), pasta, titulo, resultado);
+                        runOnUiThread(() -> {
+                            if (!dialog.isShowing() || isFinishing() || isDestroyed()) return;
+                            pdf[0] = arquivo;
+                            pdfButton.setText("PDF");
+                            pdfButton.setEnabled(true);
+                            abrirAcaoPdf(arquivo, compartilhar);
+                        });
+                    } catch (IOException | RuntimeException e) {
+                        Log.e(TAG, "Falha ao gerar PDF", e);
+                        runOnUiThread(() -> {
+                            if (!dialog.isShowing() || isFinishing() || isDestroyed()) return;
+                            pdfButton.setText("PDF");
+                            pdfButton.setEnabled(true);
+                            Toast.makeText(this, "Não foi possível gerar o PDF.", Toast.LENGTH_LONG).show();
+                        });
+                    }
+                }, "PPF-PDF").start();
+                return true;
+            });
+            menu.show();
+        });
+    }
+
+    private void abrirAcaoPdf(File arquivo, boolean compartilhar) {
+        try {
+            if (!compartilhar) {
+                pdfToSave = arquivo.getAbsolutePath();
+                savePdfDocument.launch(arquivo.getName());
+                return;
+            }
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", arquivo);
+            Intent send = new Intent(Intent.ACTION_SEND)
+                .setType("application/pdf")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            send.setClipData(ClipData.newRawUri(arquivo.getName(), uri));
+            startActivity(Intent.createChooser(send, "Compartilhar PDF"));
+        } catch (RuntimeException e) {
+            if (!compartilhar) pdfToSave = null;
+            Log.e(TAG, "Falha ao abrir ação de PDF", e);
+            Toast.makeText(this, "Não foi possível abrir a opção de PDF.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString(STATE_PDF_TO_SAVE, pdfToSave);
+    }
+
+    private void salvarPdfNoDestino(Uri destino) {
+        String caminho = pdfToSave;
+        pdfToSave = null;
+        if (destino == null) return;
+        new Thread(() -> {
+            String mensagem;
+            try {
+                if (caminho == null) throw new IOException("Origem do PDF indisponível");
+                try (FileInputStream entrada = new FileInputStream(caminho);
+                     OutputStream saida = getContentResolver().openOutputStream(destino, "w")) {
+                    if (saida == null) throw new IOException("Destino do PDF indisponível");
+                    byte[] buffer = new byte[32768];
+                    for (int tamanho; (tamanho = entrada.read(buffer)) != -1;) {
+                        saida.write(buffer, 0, tamanho);
+                    }
+                }
+                mensagem = "PDF salvo.";
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "Falha ao salvar PDF", e);
+                mensagem = "Não foi possível salvar o PDF.";
+            }
+            String aviso = mensagem;
+            runOnUiThread(() -> Toast.makeText(this, aviso, Toast.LENGTH_LONG).show());
+        }, "PPF-Save-PDF").start();
+    }
+
     private void salvarResultadoTemporario(String resultado, String prefixo) {
+        if (!prefixo.startsWith("tutorial_")) {
+            runOnUiThread(() -> abrirRelatorio(tituloResultadoPorPrefixo(prefixo), resultado,
+                tipoResultadoPorPrefixo(prefixo)));
+            return;
+        }
         try {
             // Criar pasta temporária com permissões adequadas
             File tempDir = new File(getCacheDir(), "temp_primos");
@@ -12112,15 +10819,11 @@ public class MainActivity extends AppCompatActivity {
             }
 
             String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            boolean isTutorial = prefixo.startsWith("tutorial_");
-            String conteudoFinal = isTutorial
-                ? resultado
-                : gerarHTMLResultado(tituloResultadoPorPrefixo(prefixo), resultado, tipoResultadoPorPrefixo(prefixo));
             String extensao = ".html";
             File tempFile = new File(tempDir, prefixo + "_" + timestamp + extensao);
 
             try (OutputStream os = new java.io.FileOutputStream(tempFile)) {
-                os.write(conteudoFinal.getBytes(StandardCharsets.UTF_8));
+                os.write(resultado.getBytes(StandardCharsets.UTF_8));
             }
 
             // Adicionar à lista de arquivos temporários
@@ -12980,215 +11683,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private BigInteger parseBigIntegerOuExpressao(String str) {
-        if (str == null) {
-            throw new NumberFormatException("Entrada nula");
+        if (str == null || str.length() > 200_000) {
+            throw new NumberFormatException("Entrada inválida ou muito longa");
         }
         str = str.trim();
         if (str.isEmpty()) {
             throw new NumberFormatException("Expressão vazia");
         }
-        try {
-            return new AvaliadorExpressaoBigInteger(str).parse();
-        } catch (IllegalArgumentException e) {
-            throw new NumberFormatException(e.getMessage() != null ? e.getMessage() : "Expressão inválida");
+        StringBuilder normalized = new StringBuilder(str.length());
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            int digit = c > 127 ? Character.digit(c, 10) : -1;
+            normalized.append(digit < 0 ? c : (char) ('0' + digit));
         }
-    }
-
-    /** base^exp com exp inteiro não negativo; usa {@link BigInteger#pow} quando couber em int. */
-    private static BigInteger powBigIntegerExpressao(BigInteger base, BigInteger exp) {
-        if (exp.signum() < 0) {
-            throw new IllegalArgumentException("Expoente negativo não é permitido (apenas inteiros exatos)");
+        String decimal = evaluateIntegerNativo(normalized.toString());
+        if (decimal == null) {
+            throw new NumberFormatException("Expressão inválida ou acima do limite de cálculo");
         }
-        if (exp.equals(BigInteger.ZERO)) {
-            if (base.equals(BigInteger.ZERO)) {
-                throw new IllegalArgumentException("0^0 é indefinido");
-            }
-            return BigInteger.ONE;
-        }
-        if (base.equals(BigInteger.ZERO)) {
-            return BigInteger.ZERO;
-        }
-        if (exp.bitLength() <= 31) {
-            return base.pow(exp.intValue());
-        }
-        BigInteger result = BigInteger.ONE;
-        BigInteger b = base;
-        BigInteger e = exp;
-        while (e.signum() > 0) {
-            if (e.testBit(0)) {
-                result = result.multiply(b);
-            }
-            b = b.multiply(b);
-            e = e.shiftRight(1);
-        }
-        return result;
-    }
-
-    /**
-     * Parser recursivo para expressões com inteiros grandes (BigInteger).
-     */
-    private static final class AvaliadorExpressaoBigInteger {
-        private final String s;
-        private int pos;
-
-        AvaliadorExpressaoBigInteger(String raw) {
-            this.s = raw.replaceAll("\\s+", "");
-            this.pos = 0;
-        }
-
-        BigInteger parse() {
-            if (s.isEmpty()) {
-                throw new IllegalArgumentException("Expressão vazia");
-            }
-            BigInteger v = parseExpr();
-            if (pos < s.length()) {
-                throw new IllegalArgumentException("Caractere inesperado na posição " + (pos + 1) + ": '" + s.charAt(pos) + "'");
-            }
-            return v;
-        }
-
-        private BigInteger parseExpr() {
-            BigInteger v = parseTerm();
-            while (pos < s.length()) {
-                char c = s.charAt(pos);
-                if (c == '+') {
-                    pos++;
-                    v = v.add(parseTerm());
-                } else if (c == '-') {
-                    pos++;
-                    v = v.subtract(parseTerm());
-                } else {
-                    break;
-                }
-            }
-            return v;
-        }
-
-        private BigInteger parseTerm() {
-            BigInteger v = parsePower();
-            while (pos < s.length()) {
-                char c = s.charAt(pos);
-                if (c == '*') {
-                    pos++;
-                    v = v.multiply(parsePower());
-                } else if (c == '/') {
-                    pos++;
-                    BigInteger d = parsePower();
-                    if (d.equals(BigInteger.ZERO)) {
-                        throw new IllegalArgumentException("Divisão por zero");
-                    }
-                    v = v.divide(d);
-                } else if (c == '%') {
-                    pos++;
-                    BigInteger m = parsePower();
-                    if (m.equals(BigInteger.ZERO)) {
-                        throw new IllegalArgumentException("Resto com módulo zero");
-                    }
-                    v = v.mod(m);
-                } else {
-                    break;
-                }
-            }
-            return v;
-        }
-
-        /** ^ associativo à direita: 2^3^2 = 2^(3^2). */
-        private BigInteger parsePower() {
-            BigInteger v = parseUnary();
-            if (pos < s.length() && s.charAt(pos) == '^') {
-                pos++;
-                BigInteger exp = parsePower();
-                return powBigIntegerExpressao(v, exp);
-            }
-            return v;
-        }
-
-        private BigInteger parseUnary() {
-            if (pos < s.length() && s.charAt(pos) == '+') {
-                pos++;
-                return parseUnary();
-            }
-            if (pos < s.length() && s.charAt(pos) == '-') {
-                pos++;
-                return parseUnary().negate();
-            }
-            return parsePrimary();
-        }
-
-        private BigInteger parsePrimary() {
-            if (pos >= s.length()) {
-                throw new IllegalArgumentException("Expressão incompleta");
-            }
-            char c = s.charAt(pos);
-            if (c == '(') {
-                pos++;
-                BigInteger v = parseExpr();
-                if (pos >= s.length() || s.charAt(pos) != ')') {
-                    throw new IllegalArgumentException("Falta ')'");
-                }
-                pos++;
-                return v;
-            }
-            return parseNumber();
-        }
-
-        private BigInteger parseNumber() {
-            int start = pos;
-            while (pos < s.length() && Character.isDigit(s.charAt(pos))) {
-                pos++;
-            }
-            if (start == pos) {
-                throw new IllegalArgumentException("Esperado dígito em '" + s.substring(Math.max(0, pos - 1)) + "...'");
-            }
-            String intPart = s.substring(start, pos);
-            BigInteger v = new BigInteger(intPart);
-
-            if (pos < s.length()) {
-                char c = s.charAt(pos);
-                if (c == 'e' || c == 'E') {
-                    pos++;
-                    boolean negExp = false;
-                    if (pos < s.length() && (s.charAt(pos) == '+' || s.charAt(pos) == '-')) {
-                        negExp = s.charAt(pos) == '-';
-                        pos++;
-                    }
-                    int es = pos;
-                    while (pos < s.length() && Character.isDigit(s.charAt(pos))) {
-                        pos++;
-                    }
-                    if (es == pos) {
-                        throw new IllegalArgumentException("Expoente inválido após 'e'");
-                    }
-                    int exp10 = Integer.parseInt(s.substring(es, pos));
-                    if (negExp) {
-                        throw new IllegalArgumentException("Expoente negativo em notação científica não produz inteiro em geral");
-                    }
-                    v = v.multiply(BigInteger.TEN.pow(exp10));
-                }
-            }
-
-            if (pos < s.length()) {
-                char u = s.charAt(pos);
-                if (u == 'k' || u == 'K') {
-                    pos++;
-                    v = v.multiply(BigInteger.valueOf(1_000L));
-                } else if (u == 'm' || u == 'M') {
-                    pos++;
-                    v = v.multiply(BigInteger.valueOf(1_000_000L));
-                } else if (u == 'g' || u == 'G') {
-                    pos++;
-                    v = v.multiply(BigInteger.valueOf(1_000_000_000L));
-                }
-            }
-
-            return v;
-        }
+        return new BigInteger(decimal);
     }
 
     // Teste de primalidade para BigInteger (algoritmo especializado)
     private boolean ehPrimoBigInteger(BigInteger n) {
         if (n.compareTo(BigInteger.TWO) < 0) return false;
-        if (n.equals(BigInteger.TWO) || n.equals(BigInteger.valueOf(3))) return true;
+        if (n.bitLength() <= 64) return ehPrimo64Nativo(n.longValue());
         if (n.mod(BigInteger.TWO).equals(BigInteger.ZERO)) return false;
 
         // Para números muito grandes, usar a rota nativa para evitar limitações
@@ -13197,22 +11715,12 @@ public class MainActivity extends AppCompatActivity {
             return testarPrimalidadeGiganteNativo(n.toString(), 25);
         }
 
-        // Para números grandes, usar algoritmo especializado com fallback nativo
-        if (n.compareTo(BigInteger.valueOf(1000000)) > 0) {
-            try {
-                return millerRabinBigInteger(n, 15); // 15 bases para maior confiabilidade
-            } catch (ArithmeticException e) {
-                Log.w(TAG, "Fallback para teste nativo de primalidade: " + e.getMessage());
-                return testarPrimalidadeGiganteNativo(n.toString(), 25);
-            }
+        try {
+            return millerRabinBigInteger(n, 15);
+        } catch (ArithmeticException e) {
+            Log.w(TAG, "Fallback para teste nativo de primalidade: " + e.getMessage());
+            return testarPrimalidadeGiganteNativo(n.toString(), 25);
         }
-
-        // Para números menores, teste simples
-        BigInteger sqrt = n.sqrt();
-        for (BigInteger i = BigInteger.valueOf(3); i.compareTo(sqrt) <= 0; i = i.add(BigInteger.TWO)) {
-            if (n.mod(i).equals(BigInteger.ZERO)) return false;
-        }
-        return true;
     }
 
     // algoritmo especializado para BigInteger
@@ -13254,107 +11762,29 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    // Métodos otimizados para conjectura de Legendre (suporte a até 10.000 dígitos)
-    private boolean verificarIntervaloLegendre(BigInteger inicio, BigInteger fim) {
-        int digitos = inicio.toString().length();
+    private String relatorioLegendreComum(BigInteger inicio, BigInteger fim) {
+        String relatorio = legendreReportNativo(inicio.toString(), fim.toString());
+        if (relatorio == null || relatorio.isEmpty()) {
+            throw new IllegalArgumentException("Informe valores positivos de n com até 10.000 dígitos.");
+        }
+        return relatorio;
+    }
 
-        // Estratégia adaptativa baseada no tamanho dos números
-        if (digitos <= 50) {
-            // Para números pequenos: verificação sequencial completa
-            return verificarIntervaloSequencial(inicio, fim);
-        } else if (digitos <= 200) {
-            // Para números médios: amostragem moderada
-            return verificarIntervaloAmostragem(inicio, fim, 300);
-        } else if (digitos <= 1000) {
-            // Para números grandes: amostragem robusta
-            return verificarIntervaloAmostragem(inicio, fim, 500);
-        } else if (digitos <= 5000) {
-            // Para números muito grandes: amostragem intensiva
-            return verificarIntervaloAmostragem(inicio, fim, 800);
+    private void incluirLegendreSemResultado(StringBuilder report, BigInteger n) {
+        BigInteger baixo = n.pow(2);
+        BigInteger alto = n.add(BigInteger.ONE).pow(2);
+        report.append("\nBUSCA SEM PRIMO ENCONTRADO\n")
+            .append("n = ").append(n).append('\n')
+            .append("Intervalo (").append(baixo).append(", ").append(alto).append(")\n");
+        if (alto.bitLength() > 63) {
+            report.append("A verificação foi parcial. O resultado é inconclusivo.\n\n");
         } else {
-            // Para números extremamente grandes (até 10.000 dígitos): amostragem máxima
-            return verificarIntervaloAmostragem(inicio, fim, 1200);
+            report.append("A busca exata não encontrou primo. Confirme por um método independente antes de tirar conclusões.\n\n");
         }
     }
 
-    private boolean verificarIntervaloLegendreDetalhado(BigInteger inicio, BigInteger fim) {
-        int digitos = inicio.toString().length();
-
-        // Verificação extra para casos duvidosos
-        if (digitos <= 100) {
-            // Para números pequenos: verificação completa
-            return verificarIntervaloSequencial(inicio, fim);
-        } else if (digitos <= 500) {
-            // Para números médios: amostragem dupla
-            return verificarIntervaloAmostragem(inicio, fim, 800);
-        } else if (digitos <= 2000) {
-            // Para números grandes: amostragem tripla
-            return verificarIntervaloAmostragem(inicio, fim, 1200);
-        } else {
-            // Para números extremamente grandes: amostragem máxima
-            return verificarIntervaloAmostragem(inicio, fim, 2000);
-        }
-    }
-
-    private boolean verificarIntervaloSequencial(BigInteger inicio, BigInteger fim) {
-        // Verificação sequencial para números pequenos
-        BigInteger i = inicio;
-        BigInteger limite = fim.min(inicio.add(BigInteger.valueOf(10000))); // Limite de 10.000 verificações
-
-        while (i.compareTo(limite) <= 0) {
-            if (ehPrimoBigInteger(i)) {
-                return true;
-            }
-            i = i.add(BigInteger.ONE);
-        }
-        return false;
-    }
-
-    private boolean verificarIntervaloAmostragem(BigInteger inicio, BigInteger fim, int amostras) {
-        // Amostragem inteligente para números grandes
-        SecureRandom rnd = new SecureRandom();
-        BigInteger range = fim.subtract(inicio).add(BigInteger.ONE);
-
-        // Para números extremamente grandes, usar estratégia de amostragem em camadas
-        if (range.bitLength() > 1000) {
-            return verificarIntervaloAmostragemCamadas(inicio, fim, amostras);
-        }
-
-        // Amostragem padrão para números grandes
-        for (int i = 0; i < amostras; i++) {
-            BigInteger candidato = inicio.add(new BigInteger(range.bitLength(), rnd).mod(range));
-            if (ehPrimoBigInteger(candidato)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean verificarIntervaloAmostragemCamadas(BigInteger inicio, BigInteger fim, int amostras) {
-        // Estratégia de amostragem em camadas para números extremamente grandes
-        SecureRandom rnd = new SecureRandom();
-        BigInteger range = fim.subtract(inicio).add(BigInteger.ONE);
-
-        // Dividir em camadas para melhor cobertura
-        int camadas = Math.min(10, amostras / 100);
-        int amostrasPorCamada = amostras / camadas;
-
-        for (int camada = 0; camada < camadas; camada++) {
-            // Amostrar em diferentes regiões do intervalo
-            BigInteger offset = range.multiply(BigInteger.valueOf(camada)).divide(BigInteger.valueOf(camadas));
-            BigInteger inicioCamada = inicio.add(offset);
-            BigInteger fimCamada = (camada == camadas - 1) ? fim : inicio.add(offset.add(range.divide(BigInteger.valueOf(camadas))));
-
-            BigInteger rangeCamada = fimCamada.subtract(inicioCamada).add(BigInteger.ONE);
-
-            for (int i = 0; i < amostrasPorCamada; i++) {
-                BigInteger candidato = inicioCamada.add(new BigInteger(rangeCamada.bitLength(), rnd).mod(rangeCamada));
-                if (ehPrimoBigInteger(candidato)) {
-                    return true;
-                }
-            }
-        }
-        return false;
+    private String taxaLegendre(int acertos, int total) {
+        return total > 0 ? String.format("%.2f%%", acertos * 100.0 / total) : "Sem intervalos concluídos";
     }
 
     // Teste de primalidade otimizado para números muito grandes (até 10.000 dígitos)

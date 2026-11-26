@@ -43,7 +43,7 @@ struct PPFReportScreen: View {
                 }
         }
         .sheet(item: $export) { item in
-            PPFReportExportSheet(export: item) { export = nil }
+            PPFReportExportSheet(export: item) { _ in export = nil }
         }
         .alert("Falha ao preparar PDF", isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
@@ -76,15 +76,15 @@ struct PPFReportScreen: View {
     }
 }
 
-private struct PPFReportExport: Identifiable {
+struct PPFReportExport: Identifiable {
     let id = UUID()
     let url: URL
     let save: Bool
 }
 
-private struct PPFReportExportSheet: UIViewControllerRepresentable {
+struct PPFReportExportSheet: UIViewControllerRepresentable {
     let export: PPFReportExport
-    let onFinish: () -> Void
+    let onFinish: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> UIViewController {
         if export.save {
@@ -93,7 +93,7 @@ private struct PPFReportExportSheet: UIViewControllerRepresentable {
             return picker
         }
         let share = UIActivityViewController(activityItems: [export.url], applicationActivities: nil)
-        share.completionWithItemsHandler = { _, _, _, _ in onFinish() }
+        share.completionWithItemsHandler = { _, completed, _, _ in onFinish(completed) }
         return share
     }
 
@@ -102,14 +102,14 @@ private struct PPFReportExportSheet: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let onFinish: () -> Void
+        let onFinish: (Bool) -> Void
 
-        init(onFinish: @escaping () -> Void) { self.onFinish = onFinish }
+        init(onFinish: @escaping (Bool) -> Void) { self.onFinish = onFinish }
 
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { onFinish() }
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { onFinish(false) }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            onFinish()
+            onFinish(!urls.isEmpty)
         }
     }
 }

@@ -205,15 +205,23 @@ struct SecurityView: View {
             digest.map { String(format: "%02x", $0) }.joined()
         }
 
+        let originalHash = hex(SHA256.hash(data: data))
+        let modifiedHash = hex(SHA256.hash(data: modified))
+        let different = zip(originalHash.utf8, modifiedHash.utf8).filter { $0.0 != $0.1 }.count
+        let percentage = different * 100 / originalHash.utf8.count
         let report = """
         HASHES CRIPTOGRÁFICOS
 
+        MD5 (legado): \(hex(Insecure.MD5.hash(data: data)))
         SHA-1 (legado): \(hex(Insecure.SHA1.hash(data: data)))
-        SHA-256: \(hex(SHA256.hash(data: data)))
+        SHA-256: \(originalHash)
         SHA-512: \(hex(SHA512.hash(data: data)))
 
         SHA-256 após acrescentar "!":
-        \(hex(SHA256.hash(data: modified)))
+        \(modifiedHash)
+        Diferença nos caracteres hexadecimais: \(percentage)%
+
+        MD5 e SHA-1 são apresentados apenas para comparação histórica.
         """
         appState.saveTemporaryResultAndOpenViewer(report, prefix: "seguranca_hash", statusMessage: result)
     }

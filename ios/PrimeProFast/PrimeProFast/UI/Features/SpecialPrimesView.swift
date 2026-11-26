@@ -19,7 +19,7 @@ struct SpecialPrimesView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                TextField("Limite N (até 10.000.000)", text: $limite)
+                TextField("Limite superior da busca", text: $limite)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
             }
@@ -35,22 +35,30 @@ struct SpecialPrimesView: View {
     }
 
     private func buscar(result: Binding<String>, loading: Binding<Bool>) async {
+        guard !loading.wrappedValue else { return }
         let family = tipo
-        guard let q = Int(quantidade), (1...PPFMath.specialPrimeCountLimit).contains(q) else {
-            result.wrappedValue = "Informe uma quantidade entre 1 e 1.000."
+        guard let q = Int(quantidade), q > 0, family == .fermat || q <= PPFMath.specialPrimeCountLimit else {
+            result.wrappedValue = family == .fermat
+                ? "Informe uma quantidade maior que zero."
+                : "Informe uma quantidade entre 1 e 10.000."
             return
         }
-        let n = family == .fermat ? 2 : (Int(limite) ?? 0)
-        guard (2...PPFMath.specialPrimeLimit).contains(n) else {
-            result.wrappedValue = "Informe um limite entre 2 e 10.000.000."
+        let n = family == .fermat ? 0 : (Int(limite) ?? 0)
+        guard family == .fermat || n >= 2 else {
+            result.wrappedValue = "Informe um inteiro entre 2 e 9.223.372.036.854.775.807."
             return
         }
         loading.wrappedValue = true
+        let id = family.nativeID
         let out = await Task.detached {
-            PPFMath.specialPrimes(family, limit: n, count: q)
+            PPFNative.specialPrimes(family: id, limit: n, count: q)
         }.value
         await MainActor.run {
             loading.wrappedValue = false
+            guard !out.isEmpty else {
+                result.wrappedValue = "Não foi possível preparar o resultado."
+                return
+            }
             appState.saveTemporaryResultAndOpenViewer(
                 out,
                 prefix: "primos_especiais",

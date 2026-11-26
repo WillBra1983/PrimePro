@@ -8,9 +8,9 @@ struct PrimeMatchTile: Identifiable, Equatable {
 }
 
 private struct PrimeMatchGroup {
+    let mask: UInt64
     let cells: [(row: Int, col: Int)]
     let sum: Int
-    let blackCount: Int
 }
 
 private enum PrimeMatchPower: String, CaseIterable {
@@ -27,6 +27,26 @@ private enum PrimeMatchPower: String, CaseIterable {
     case columnRay = "Raio da coluna"
     case hint = "Dica prima"
     case multiplier = "Combo ×2"
+
+    var nativeMask: UInt32 {
+        let id: Int32
+        switch self {
+        case .hammer: id = Int32(PPF_MATCH_HAMMER)
+        case .plus1: id = Int32(PPF_MATCH_PLUS_1)
+        case .plus2: id = Int32(PPF_MATCH_PLUS_2)
+        case .plus3: id = Int32(PPF_MATCH_PLUS_3)
+        case .shuffle: id = Int32(PPF_MATCH_SHUFFLE)
+        case .swap: id = Int32(PPF_MATCH_SWAP)
+        case .copyColor: id = Int32(PPF_MATCH_COPY_COLOR)
+        case .polishUp: id = Int32(PPF_MATCH_POLISH_UP)
+        case .polishDown: id = Int32(PPF_MATCH_POLISH_DOWN)
+        case .rowRay: id = Int32(PPF_MATCH_ROW_RAY)
+        case .columnRay: id = Int32(PPF_MATCH_COLUMN_RAY)
+        case .hint: id = Int32(PPF_MATCH_HINT)
+        case .multiplier: id = Int32(PPF_MATCH_MULTIPLIER)
+        }
+        return UInt32(1) << id
+    }
 }
 
 private final class PrimeMatchSoundPlayer: ObservableObject {
@@ -67,16 +87,16 @@ private final class PrimeMatchSoundPlayer: ObservableObject {
 }
 
 struct PrimeMatchView: View {
-    private let rows = 6
-    private let cols = 6
+    private let rows = Int(PPF_MATCH_SIDE)
+    private let cols = Int(PPF_MATCH_SIDE)
     private let minChain = 3
-    private let levelCount = 24
-    private var target: Int { 760 + level * 140 }
+    private let levelCount = Int(PPF_MATCH_MAX_LEVELS)
+    private var target: Int { Int(ppf_match_level_target(Int32(level))) }
     private var unlockedLevel: Int {
         guard let index = levelStars.lastIndex(where: { $0 > 0 }) else { return 1 }
         return min(levelCount, index + 2)
     }
-    private let blackColorIndex = 99
+    private let blackColorIndex = Int(PPF_MATCH_BLACK)
     private let colors: [Color] = [
         Color(red: 0.05, green: 0.34, blue: 0.79),
         Color(red: 0.02, green: 0.52, blue: 0.29),
@@ -106,6 +126,7 @@ struct PrimeMatchView: View {
     @State private var pendingAddition: PrimeMatchPower?
     @State private var comboMultiplier = false
     @State private var resolving = false
+    @State private var resolutionTask: Task<Void, Never>?
     @State private var effectCells: Set<Int> = []
     @State private var effectText: String?
     @StateObject private var soundPlayer = PrimeMatchSoundPlayer()
@@ -200,19 +221,19 @@ struct PrimeMatchView: View {
         .onAppear {
             if board.isEmpty {
                 reset()
+                showLevels = true
             }
         }
+        .onDisappear { resolutionTask?.cancel() }
         .navigationTitle("Prime Match · Fase \(level)")
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var powerMenu: some View {
-        Menu {
-            ForEach(PrimeMatchPower.allCases, id: \.self) { power in
-                let count = stock(for: power).wrappedValue
-                if count > 0 {
-                    Button("\(power.rawValue) · \(count)") { arm(power) }
-                }
+        let available = availablePowers
+        return Menu {
+            ForEach(available, id: \.self) { power in
+                Button("\(power.rawValue) · \(stock(for: power).wrappedValue)") { arm(power) }
             }
             if tilePower != nil || pendingAddition != nil || comboMultiplier {
                 Button("Cancelar poderes armados") { clearPowers() }
@@ -223,7 +244,12 @@ struct PrimeMatchView: View {
                 .foregroundStyle(tilePower != nil || pendingAddition != nil || comboMultiplier ? .orange : .primary)
         }
         .accessibilityLabel("Poderes")
-        .disabled(!active || resolving || totalSavedPowers == 0)
+        .disabled(!active || resolving || available.isEmpty)
+    }
+
+    private var availablePowers: [PrimeMatchPower] {
+        let mask = ppf_match_level_powers(Int32(level))
+        return PrimeMatchPower.allCases.filter { ($0.nativeMask & mask) != 0 && stock(for: $0).wrappedValue > 0 }
     }
 
     private func stock(for power: PrimeMatchPower) -> Binding<Int> {
@@ -252,7 +278,7 @@ struct PrimeMatchView: View {
     }
 
     private func arm(_ power: PrimeMatchPower) {
-        guard active, !resolving, stock(for: power).wrappedValue > 0 else { return }
+        guard active, !resolving, availablePowers.contains(power) else { return }
         cancelDrag()
         tilePower = nil
         switch power {
@@ -567,7 +593,7 @@ struct PrimeMatchView: View {
         historyCounter = 0
         cancelDrag()
         score = 0
-        moves = max(16, 22 - min(6, level / 4))
+        moves = Int(ppf_match_level_moves(Int32(level)))
         active = true
         rewardGranted = false
         status = "Meta: acumule \(target) pontos. Tente criar primos cada vez maiores."
@@ -575,7 +601,8 @@ struct PrimeMatchView: View {
     }
 
     private func randomTile() -> PrimeMatchTile {
-        PrimeMatchTile(value: Int.random(in: 1...19), colorIndex: Int.random(in: 0..<colors.count))
+        let ticket = Int32.random(in: 0..<Int32(PPF_MATCH_VALUE_TICKETS))
+        return PrimeMatchTile(value: Int(ppf_match_draw_value(ticket)), colorIndex: Int.random(in: 0..<colors.count))
     }
 
     private func randomTileAvoidingMatch(row: Int, col: Int) -> PrimeMatchTile {
@@ -584,12 +611,24 @@ struct PrimeMatchView: View {
             let candidate = randomTile()
             board[row][col] = candidate
             chosen = candidate
-            if !formsMatch(row: row, col: col) {
+            if !formsMatch(row: row, col: col) && !createsLocalPattern(row: row, col: col, tile: candidate) {
                 return candidate
             }
         }
         board[row][col] = chosen
         return chosen
+    }
+
+    private func createsLocalPattern(row: Int, col: Int, tile: PrimeMatchTile) -> Bool {
+        let tiles = board.flatMap { $0 }
+        let values = tiles.map { Int32(clamping: $0.value) }
+        let indices = tiles.map { Int32(clamping: $0.colorIndex) }
+        return values.withUnsafeBufferPointer { valueBuffer in
+            indices.withUnsafeBufferPointer { colorBuffer in
+                ppf_match_local_pattern(valueBuffer.baseAddress, colorBuffer.baseAddress,
+                    Int32(row * cols + col), Int32(clamping: tile.value), Int32(tile.colorIndex))
+            }
+        }
     }
 
     private func formsMatch(row: Int, col: Int) -> Bool {
@@ -679,13 +718,19 @@ struct PrimeMatchView: View {
         case .columnRay:
             removed = Set((0..<rows).map { $0 * cols + tile.col })
         case .polishUp, .polishDown:
-            let newValue = board[tile.row][tile.col].value + (power == .polishUp ? 1 : -1)
-            guard (1...19).contains(newValue) else {
-                status = "Escolha uma peça cujo valor possa ficar entre 1 e 19."
+            let selected = board[tile.row][tile.col]
+            let newValue = ppf_match_polished_value(Int32(clamping: selected.value),
+                Int32(selected.colorIndex), power == .polishUp ? 1 : -1)
+            guard newValue > 0 else {
+                status = "Escolha uma peça colorida cujo valor possa ficar entre 1 e \(PPF_MATCH_TILE_VALUE_MAX)."
                 return
             }
-            board[tile.row][tile.col].value = newValue
+            board[tile.row][tile.col].value = Int(newValue)
         case .swap, .copyColor:
+            if power == .copyColor && isBlack(board[tile.row][tile.col].colorIndex) {
+                status = "Peças pretas não podem copiar nem emprestar a cor."
+                return
+            }
             guard let first = tapSource else {
                 tapSource = tile
                 selection = [tile]
@@ -696,6 +741,10 @@ struct PrimeMatchView: View {
             if power == .swap {
                 swapTiles(first, tile)
             } else {
+                guard board[first.row][first.col].colorIndex != board[tile.row][tile.col].colorIndex else {
+                    status = "Escolha uma cor diferente."
+                    return
+                }
                 board[first.row][first.col].colorIndex = board[tile.row][tile.col].colorIndex
             }
         default:
@@ -817,16 +866,18 @@ struct PrimeMatchView: View {
                                    fallback: (row: Int, col: Int)?,
                                    startingRemoval: Set<Int> = []) {
         resolving = true
-        Task { @MainActor in
+        resolutionTask = Task { @MainActor in
             defer {
                 resolving = false
                 effectText = nil
                 effectCells = []
+                resolutionTask = nil
             }
             if !startingRemoval.isEmpty {
                 effectCells = startingRemoval
                 effectText = "Poder aplicado"
                 try? await Task.sleep(nanoseconds: 450_000_000)
+                guard !Task.isCancelled else { return }
                 remove(startingRemoval)
                 compactBoard(fixed: emptyMask())
             }
@@ -834,9 +885,15 @@ struct PrimeMatchView: View {
             for chain in 0..<12 {
                 let groups = findMatchGroups()
                 guard !groups.isEmpty else { break }
-                let matched = Set(groups.flatMap { $0.cells.map { $0.row * cols + $0.col } })
+                let matched = groups.reduce(UInt64(0)) { $0 | $1.mask }
                 var removed = matched
-                var countedExtras: Set<Int> = []
+                var countedExtras: UInt64 = 0
+                var black: UInt64 = 0
+                let tiles = board.flatMap { $0 }
+                let values = tiles.map { Int32(clamping: $0.value) }
+                for (index, tile) in tiles.enumerated() where tile.value > 0 && isBlack(tile.colorIndex) {
+                    black |= UInt64(1) << index
+                }
                 var creations: [Int: Int] = [:]
                 var delta = 0
                 var previews: [(text: String, cells: Set<Int>, prime: Bool)] = []
@@ -854,36 +911,37 @@ struct PrimeMatchView: View {
                         pendingAddition = nil
                     }
                     let sum = group.sum + adjustment
-                    let prime = PPFMath.isPrime(sum)
-                    var points = prime ? sum : 0
-                    var highlighted = Set(group.cells.map { $0.row * cols + $0.col })
+                    let event = values.withUnsafeBufferPointer {
+                        ppf_match_resolve($0.baseAddress, black, group.mask, matched, countedExtras, Int64(sum))
+                    }
+                    let prime = event.black_value > 0
+                    let extra = prime ? Int(event.points) - sum : 0
+                    var points = Int(event.points)
+                    var doubled = false
+                    removed |= event.blast_mask
+                    countedExtras |= event.credited_mask
                     if prime {
-                        let blast = blastTiles(for: group)
-                        removed.formUnion(blast)
-                        highlighted.formUnion(blast)
-                        let extras = blast.subtracting(matched).subtracting(countedExtras)
-                        let extraValue = extras.reduce(0) { $0 + board[$1 / cols][$1 % cols].value }
-                        if group.blackCount == 2 || PPFMath.isPrime(sum + extraValue) {
-                            points += extraValue
-                            countedExtras.formUnion(extras)
-                        }
                         if chain > 0, comboMultiplier, comboMultCount > 0 {
                             points *= 2
+                            doubled = true
                             comboMultCount -= 1
                             comboMultiplier = false
                         }
                         let position = anchorFor(group: group, preferred: chain == 0 ? anchor : nil,
                                                  fallback: chain == 0 ? fallback : nil)
                         let key = position.row * cols + position.col
-                        creations[key] = max(creations[key] ?? 0, sum)
+                        creations[key] = max(creations[key] ?? 0, Int(event.black_value))
                     }
                     let numbers = group.cells.map { String(board[$0.row][$0.col].value) }.joined(separator: " + ")
                     let equation = numbers + (adjustment > 0 ? " + \(adjustment)" : "") + " = \(sum)"
-                    let detail = equation + (prime ? " · +\(points) pontos" : " · composto")
+                    let detail = prime
+                        ? equation + (extra > 0 ? " · efeito +\(extra)" : "")
+                            + " · preta \(event.black_value) · +\(points) pontos" + (doubled ? " (×2)" : "")
+                        : equation + " · composto"
                     historyCounter += 1
                     history.insert("\(historyCounter). \(detail)", at: 0)
-                    if history.count > 50 { history.removeLast() }
-                    previews.append((detail, highlighted, prime))
+                    if history.count > Int(PPF_MATCH_HISTORY_MAX) { history.removeLast() }
+                    previews.append((detail, Set(cellIndices(in: event.blast_mask)), prime))
                     delta += points
                 }
                 for (index, preview) in previews.enumerated() {
@@ -891,11 +949,12 @@ struct PrimeMatchView: View {
                     effectText = previews.count > 1
                         ? "\(index + 1)/\(previews.count) · \(preview.text)" : preview.text
                     soundPlayer.play(preview.prime ? (chain > 0 ? "ppf_pm_combo" : "ppf_pm_prime") : "ppf_pm_composite", enabled: soundEnabled)
-                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                    try? await Task.sleep(nanoseconds: UInt64(PPF_MATCH_PREVIEW_MS) * 1_000_000)
+                    guard !Task.isCancelled else { return }
                 }
                 var fixed = emptyMask()
                 withAnimation(.easeInOut(duration: 0.22)) {
-                    remove(removed)
+                    remove(Set(cellIndices(in: removed)))
                     for (key, value) in creations {
                         board[key / cols][key % cols] = PrimeMatchTile(value: value, colorIndex: blackColorIndex)
                         fixed[key / cols][key % cols] = true
@@ -905,6 +964,7 @@ struct PrimeMatchView: View {
                     effectCells = []
                 }
                 try? await Task.sleep(nanoseconds: 220_000_000)
+                guard !Task.isCancelled else { return }
             }
             status = score > initialScore ? "+\(score - initialScore) pontos." : "Jogada concluída."
             checkEnd()
@@ -920,103 +980,35 @@ struct PrimeMatchView: View {
         for cell in cells { board[cell / cols][cell % cols].value = 0 }
     }
 
-    private func blastTiles(for group: PrimeMatchGroup) -> Set<Int> {
-        guard group.blackCount > 0 else { return [] }
-        var tiles: Set<Int> = []
-        for row in 0..<rows {
-            for col in 0..<cols {
-                let adjacentToBlack = group.cells.contains { cell in
-                    isBlack(board[cell.row][cell.col].colorIndex) &&
-                    abs(cell.row - row) <= 1 && abs(cell.col - col) <= 1
-                }
-                if group.blackCount >= 3 ||
-                    (group.blackCount == 2 && PPFMath.isPrime(board[row][col].value)) ||
-                    (group.blackCount == 1 && adjacentToBlack) {
-                    tiles.insert(row * cols + col)
-                }
-            }
-        }
-        return tiles
-    }
-
     private func findMatchGroups() -> [PrimeMatchGroup] {
-        var groups: [PrimeMatchGroup] = []
-        appendLinearMatchGroups(to: &groups, horizontal: true)
-        appendLinearMatchGroups(to: &groups, horizontal: false)
-        return groups
-    }
-
-    private func appendLinearMatchGroups(to groups: inout [PrimeMatchGroup], horizontal: Bool) {
-        let lineCount = horizontal ? rows : cols
-        let length = horizontal ? cols : rows
-        for line in 0..<lineCount {
-            var start = 0
-            while start < length {
-                while start < length, !linearPositionOccupied(horizontal: horizontal, line: line, position: start) {
-                    start += 1
-                }
-                guard start < length else { break }
-
-                var end = start
-                var baseColor: Int?
-                while end < length, linearPositionOccupied(horizontal: horizontal, line: line, position: end) {
-                    let cell = linearCell(horizontal: horizontal, line: line, position: end)
-                    let colorIndex = board[cell.row][cell.col].colorIndex
-                    if !isBlack(colorIndex) {
-                        if baseColor == nil {
-                            baseColor = colorIndex
-                        } else if baseColor! != colorIndex {
-                            break
-                        }
-                    }
-                    end += 1
-                }
-
-                if end - start >= minChain {
-                    groups.append(makeLinearGroup(
-                        horizontal: horizontal,
-                        line: line,
-                        start: start,
-                        end: end - 1
-                    ))
-                    start = end
-                } else {
-                    // A trailing wild tile can start a match of the next color.
-                    start += 1
-                }
+        let tiles = board.flatMap { $0 }
+        guard tiles.count == Int(PPF_MATCH_CELLS) else { return [] }
+        let colors = tiles.map { Int32(clamping: $0.colorIndex) }
+        var occupied: UInt64 = 0
+        for (index, tile) in tiles.enumerated() where tile.value > 0 {
+            occupied |= UInt64(1) << index
+        }
+        var masks = Array(repeating: UInt64(0), count: Int(PPF_MATCH_MAX_GROUPS))
+        let count = colors.withUnsafeBufferPointer { colorBuffer in
+            masks.withUnsafeMutableBufferPointer { maskBuffer in
+                ppf_match_groups(colorBuffer.baseAddress, occupied, maskBuffer.baseAddress)
             }
+        }
+        return masks.prefix(Int(count)).map { mask in
+            let ids = cellIndices(in: mask)
+            let cells = ids.map { (row: $0 / cols, col: $0 % cols) }
+            return PrimeMatchGroup(mask: mask, cells: cells, sum: ids.reduce(0) { $0 + tiles[$1].value })
         }
     }
 
-    private func linearPositionOccupied(horizontal: Bool, line: Int, position: Int) -> Bool {
-        let cell = linearCell(horizontal: horizontal, line: line, position: position)
-        return board[cell.row][cell.col].value != 0
-    }
-
-    private func linearCell(horizontal: Bool, line: Int, position: Int) -> (row: Int, col: Int) {
-        horizontal ? (row: line, col: position) : (row: position, col: line)
-    }
-
-    private func makeLinearGroup(
-        horizontal: Bool,
-        line: Int,
-        start: Int,
-        end: Int
-    ) -> PrimeMatchGroup {
-        var cells: [(row: Int, col: Int)] = []
-        var sum = 0
-        var blackCount = 0
-
-        for position in start...end {
-            let cell = linearCell(horizontal: horizontal, line: line, position: position)
-            cells.append(cell)
-            sum += board[cell.row][cell.col].value
-            if isBlack(board[cell.row][cell.col].colorIndex) {
-                blackCount += 1
-            }
+    private func cellIndices(in mask: UInt64) -> [Int] {
+        var remaining = mask
+        var result: [Int] = []
+        while remaining != 0 {
+            result.append(remaining.trailingZeroBitCount)
+            remaining &= remaining - 1
         }
-
-        return PrimeMatchGroup(cells: cells, sum: sum, blackCount: blackCount)
+        return result
     }
 
     private func anchorFor(
@@ -1110,49 +1102,20 @@ struct PrimeMatchView: View {
         guard !rewardGranted else { return "" }
         rewardGranted = true
         wins += 1
-
-        switch wins % 6 {
-        case 1:
-            hammerCount += 1
-            plus1Count += 1
-            return "Recompensas: Martelo +1, +1 +1"
-        case 2:
-            reshuffleCount += 1
-            plus2Count += 1
-            hintCount += 1
-            return "Recompensas: Reorganizar +1, +2 +1, Dica prima +1"
-        case 3:
-            plus3Count += 1
-            freeSwapCount += 1
-            return "Recompensas: +3 +1, Troca livre +1"
-        case 4:
-            colorCopyCount += 1
-            polishUpCount += 1
-            polishDownCount += 1
-            return "Recompensas: Coringa +1, Lapidar +1 +1, Lapidar -1 +1"
-        case 5:
-            rowRayCount += 1
-            colRayCount += 1
-            return "Recompensas: Raio linha +1, Raio coluna +1"
-        default:
-            hintCount += 1
-            comboMultCount += 1
-            hammerCount += 1
-            return "Recompensas: Dica prima +1, Combo x2 +1, Martelo +1"
+        let rewards = ppf_match_victory_rewards(Int32(clamping: wins))
+        let granted = PrimeMatchPower.allCases.filter { ($0.nativeMask & rewards) != 0 }
+        for power in granted {
+            stock(for: power).wrappedValue += 1
         }
+        return granted.isEmpty ? "" : "Recompensas: " + granted.map { "\($0.rawValue) +1" }.joined(separator: ", ")
     }
 
     private func progressPercent(for value: Int) -> Int {
-        guard target > 0 else { return 0 }
-        return min(100, max(0, value * 100 / target))
+        Int(ppf_match_percent(Int32(clamping: value), Int32(target)))
     }
 
     private func stars(for value: Int) -> Int {
-        let percent = progressPercent(for: value)
-        if percent >= 100 { return 3 }
-        if percent >= 66 { return 2 }
-        if percent >= 33 { return 1 }
-        return 0
+        Int(ppf_match_stars(Int32(clamping: value), Int32(target)))
     }
 
     private func starsText(for stars: Int) -> String {

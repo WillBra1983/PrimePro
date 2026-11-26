@@ -8,6 +8,7 @@ struct PerfectNumbersView: View {
     @State private var attempts = "1000"
     @State private var oddSearch: PPFNative.Cancellation?
     @State private var showOddReport = false
+    @AppStorage("odd_perfect_next_n") private var oddCheckpoint = 0
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -41,10 +42,10 @@ struct PerfectNumbersView: View {
             .disabled(loading.wrappedValue)
 
             Divider()
-            TextField("Dígitos da busca ímpar (1 a 9)", text: $oddDigits)
+            TextField("Dígitos da busca ímpar (1 a 12)", text: $oddDigits)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
-            TextField("Tentativas (1 a 5.000)", text: $attempts)
+            TextField("Tentativas (1 a 100.000)", text: $attempts)
                 .keyboardType(.numberPad)
                 .textFieldStyle(.roundedBorder)
             Button("Testar candidatos ímpares") {
@@ -52,6 +53,18 @@ struct PerfectNumbersView: View {
             }
             .buttonStyle(.bordered)
             .disabled(loading.wrappedValue)
+            Button("Iniciar busca sequencial") {
+                Task { await searchOdd(result: result, loading: loading, sequential: true) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(loading.wrappedValue)
+            if oddCheckpoint > 0 {
+                Button("Continuar busca salva") {
+                    let start = Int64(oddCheckpoint)
+                    Task { await searchOdd(result: result, loading: loading, sequential: true, resume: start) }
+                }
+                .disabled(loading.wrappedValue)
+            }
             if let oddSearch {
                 Button("Parar e ver resultado") { oddSearch.request() }
                     .buttonStyle(.bordered)
@@ -65,97 +78,127 @@ struct PerfectNumbersView: View {
 
     @MainActor
     private func searchByDigits(result: Binding<String>, loading: Binding<Bool>) async {
+        guard !loading.wrappedValue else { return }
         guard let count = Int(digits), (1...10_000).contains(count) else {
             result.wrappedValue = "Informe de 1 a 10.000 dígitos."
             return
         }
         loading.wrappedValue = true
         let report = await PPFNative.run {
-            // GIMPS verified exponents covering perfect numbers up to 10,000 digits.
-            let exponents = [2, 3, 5, 7, 13, 17, 19, 31, 61, 89, 107, 127, 521, 607,
-                             1279, 2203, 2281, 3217, 4253, 4423, 9689, 9941, 11213]
-            let matches = exponents.compactMap { p -> String? in
-                guard let value = PPFNative.evaluateInteger("2^(\(p)-1)*(2^\(p)-1)"),
-                      value.count == count else { return nil }
-                return "Expoente de Mersenne: \(p)\n\(value)"
-            }
-            return "PERFEITOS PARES — \(count) DÍGITOS\n\n" +
-                (matches.isEmpty ? "Nenhum número perfeito par conhecido com esse tamanho." : matches.joined(separator: "\n\n"))
+            PPFNative.perfectReport(mode: Int32(PPF_PERFECT_BY_DIGITS), value: count)
         }
         loading.wrappedValue = false
+        guard !report.isEmpty else {
+            result.wrappedValue = "Não foi possível calcular o resultado."
+            return
+        }
         appState.saveTemporaryResultAndOpenViewer(report, prefix: "numeros_perfeitos_digitos", statusMessage: result)
     }
 
     @MainActor
-    private func searchOdd(result: Binding<String>, loading: Binding<Bool>) async {
-        guard !loading.wrappedValue,
-              let digits = Int(oddDigits), (1...9).contains(digits),
-              let attempts = Int(attempts), (1...5_000).contains(attempts) else {
-            result.wrappedValue = "Use de 1 a 9 dígitos e de 1 a 5.000 tentativas."
+    private func searchOdd(result: Binding<String>, loading: Binding<Bool>, sequential: Bool = false,
+                           resume: Int64? = nil) async {
+        guard !loading.wrappedValue else { return }
+        let maximum = ppf_perfect_verify_max() - 1
+        let limit = Int(PPF_ODD_PERFECT_MAX_ATTEMPTS)
+        let digitLimit = Int(PPF_ODD_PERFECT_MAX_DIGITS)
+        let digits = Int(oddDigits) ?? 0
+        let requested = Int(attempts) ?? 0
+        guard (resume != nil || (1...digitLimit).contains(digits)),
+              sequential || (1...limit).contains(requested) else {
+            result.wrappedValue = "Use de 1 a 12 dígitos e de 1 a 100.000 tentativas."
             return
         }
+
+        let lower = resume == nil ? (1..<digits).reduce(Int64(1)) { value, _ in value * 10 } : 1
+        let first = lower | 1
+        let last = sequential ? maximum : lower * 10 - 1
+        let pool = (last - first) / 2 + 1
+        let count = min(Int64(requested), pool)
+        var next = resume ?? (sequential ? first : first + 2 * Int64.random(in: 0..<pool))
+
         let token = PPFNative.Cancellation()
         oddSearch = token
         showOddReport = true
         loading.wrappedValue = true
         result.wrappedValue = "Testando candidatos ímpares…"
-        let report = await Task.detached {
-            let lower = (1..<digits).reduce(1) { value, _ in value * 10 }
-            let firstOdd = lower.isMultiple(of: 2) ? lower + 1 : lower
-            let pool = (lower * 10 - firstOdd + 1) / 2
-            let count = min(attempts, pool)
-            let offset = Int.random(in: 0..<pool)
-            var tested = 0
-            var found: Int?
-            for step in 0..<count {
-                if token.isRequested { break }
-                let n = firstOdd + 2 * ((offset + step) % pool)
-                tested += 1
-                if PPFMath.properDivisorSum(n) == n {
-                    found = n
-                    break
-                }
+
+        var tested: Int64 = 0
+        var found: Int64 = 0
+        var failed = false
+        var lastUpdate = ProcessInfo.processInfo.systemUptime
+        if sequential { oddCheckpoint = Int(next) }
+        while !token.isRequested && found == 0 && (sequential ? next <= last : tested < count) {
+            if next > last { next = first }
+            let start = next
+            let size = sequential ? 64 : Int32(min(64, count - tested))
+            let batch = await Task.detached { ppf_scan_odd_perfect(start, last, size) }.value
+            if batch.next == 0 { failed = true; break }
+            next = batch.next
+            tested += Int64(batch.tested)
+            found = batch.found
+            let uptime = ProcessInfo.processInfo.systemUptime
+            if uptime - lastUpdate >= 0.25 {
+                lastUpdate = uptime
+                if sequential { oddCheckpoint = next <= last && found == 0 ? Int(next) : 0 }
+                result.wrappedValue = "Candidatos testados: \(tested.formatted())"
             }
-            let summary = found.map { "Candidato encontrado: \($0)" }
-                ?? "Nenhum número perfeito ímpar encontrado entre os candidatos testados."
-            return "BUSCA EXPERIMENTAL POR PERFEITOS ÍMPARES\n\nDígitos: \(digits)\nCandidatos testados: \(tested)\n\n\(summary)"
-        }.value
+        }
+        if sequential { oddCheckpoint = next <= last && found == 0 ? Int(next) : 0 }
         oddSearch = nil
         loading.wrappedValue = false
+        let outcome: String
+        if found > 0 {
+            outcome = "Candidato: \(found). Confirme o resultado por um método independente."
+        } else if failed {
+            outcome = "Não foi possível terminar a busca."
+        } else {
+            let reason = token.isRequested ? "Busca interrompida. " : ""
+            outcome = reason + "Nenhum número perfeito ímpar entre os candidatos testados."
+        }
         if showOddReport {
+            let report = "BUSCA POR PERFEITOS ÍMPARES\n\nCandidatos testados: \(tested)\n\n\(outcome)"
             appState.saveTemporaryResultAndOpenViewer(report, prefix: "numeros_perfeitos_impares", statusMessage: result)
         }
     }
 
     private func verify(result: Binding<String>, loading: Binding<Bool>) async {
+        guard !loading.wrappedValue else { return }
         let input = number
         loading.wrappedValue = true
         let report: String? = await PPFNative.run {
             guard let decimal = PPFNative.evaluateInteger(input),
-                  let n = Int(decimal), (1...1_000_000_000_000).contains(n) else { return nil }
-            let sum = PPFMath.properDivisorSum(n)
-            let status = sum == n ? "É um número perfeito." : "Não é um número perfeito."
-            return "Número: \(n)\nSoma dos divisores próprios: \(sum)\n\n\(status)"
+                  !decimal.hasPrefix("-"), decimal != "0", decimal.utf8.count <= 10_000 else { return nil }
+            return PPFNative.verifyPerfect(decimal)
         }
         loading.wrappedValue = false
         guard let report else {
-            result.wrappedValue = "Informe um inteiro entre 1 e 1 trilhão."
+            result.wrappedValue = "Informe um inteiro positivo de até 10.000 dígitos."
+            return
+        }
+        guard !report.isEmpty else {
+            result.wrappedValue = "Não foi possível calcular o resultado."
             return
         }
         appState.saveTemporaryResultAndOpenViewer(report, prefix: "numeros_perfeitos_verificacao", statusMessage: result)
     }
 
     private func buscar(result: Binding<String>, loading: Binding<Bool>) async {
-        guard let n = Int(limite), n >= 6 else {
+        guard !loading.wrappedValue else { return }
+        guard let n = Int(limite), n >= 1 else {
             result.wrappedValue = "Limite inválido."
             return
         }
         loading.wrappedValue = true
-        let texto = await Task.detached {
-            PPFMath.perfectNumbers(mode: 1, limit: n)
-        }.value
+        let texto = await PPFNative.run {
+            PPFNative.perfectReport(mode: Int32(PPF_PERFECT_BY_LIMIT), value: n)
+        }
         await MainActor.run {
             loading.wrappedValue = false
+            guard !texto.isEmpty else {
+                result.wrappedValue = "Não foi possível calcular o resultado."
+                return
+            }
             appState.saveTemporaryResultAndOpenViewer(
                 texto,
                 prefix: "numeros_perfeitos_busca_sequencial",

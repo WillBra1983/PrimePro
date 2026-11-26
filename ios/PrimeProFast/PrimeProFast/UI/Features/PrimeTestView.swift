@@ -30,11 +30,12 @@ struct PrimeTestView: View {
 
         let inicio = Date()
         let analysis: (String, Bool, String?)? = await PPFNative.run {
-            guard let number = PPFNative.evaluateInteger(expression), !number.hasPrefix("-") else {
+            guard let number = PPFNative.evaluateInteger(expression),
+                  !number.hasPrefix("-"), number.utf8.count <= 10_000 else {
                 return nil
             }
             let prime = PPFNative.testarPrimalidade(number, repeticoes: 25)
-            let factors = prime ? nil : PPFNative.smallFactors(number)
+            let factors = (prime || number == "0" || number == "1") ? nil : PPFNative.smallFactors(number)
             return (number, prime, factors)
         }
         guard let (numero, primo, fatores) = analysis else {
@@ -44,14 +45,17 @@ struct PrimeTestView: View {
         }
         let tempo = Date().timeIntervalSince(inicio)
 
-        let status = primo ? "✅ É PRIMO" : (numero == "0" || numero == "1" ? "Nem primo nem composto" : "❌ É COMPOSTO")
-        let detalhesFatores = fatores.map { "   • Fatores encontrados: \($0)" }
-            ?? (!primo && numero != "0" && numero != "1" ? "   • Nenhum fator encontrado até 10.000." : "")
+        let neither = numero == "0" || numero == "1"
+        let status = neither ? "Nem primo nem composto"
+            : (primo ? (UInt64(numero) == nil ? "PROVAVELMENTE PRIMO" : "✅ É PRIMO (teste determinístico)") : "❌ É COMPOSTO")
+        let detalhesFatores = fatores
+            ?? (!primo && !neither ? "Não foi possível preparar a fatoração." : "")
         let relatorio = """
         🔍 TESTE DE PRIMALIDADE
         =======================
 
         📊 ENTRADA:
+           • Expressão: \(expression)
            • Número: \(numero)
            • Dígitos: \(numero.count)
 

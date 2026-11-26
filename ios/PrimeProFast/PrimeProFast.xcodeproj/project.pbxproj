@@ -14,7 +14,6 @@
 		A10000010000000000000005 /* MenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* MenuView.swift */; };
 		A10000010000000000000006 /* ResultPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* ResultPanel.swift */; };
 		A10000010000000000000007 /* PPFNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* PPFNative.swift */; };
-		A10000010000000000000008 /* PPFBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* PPFBridge.mm */; };
 		A10000010000000000000009 /* IntervalPrimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* IntervalPrimesView.swift */; };
 		A10000010000000000000010 /* RandomPrimesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010 /* RandomPrimesView.swift */; };
 		A10000010000000000000011 /* PrimeTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* PrimeTestView.swift */; };
@@ -32,6 +31,8 @@
 		A10000010000000000000023 /* PrimeMatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000028 /* PrimeMatchView.swift */; };
 		A10000010000000000000024 /* PrimeArcadeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000029 /* PrimeArcadeView.swift */; };
 		A10000010000000000000025 /* AppIcon-1024.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* AppIcon-1024.png */; };
+		A10000010000000000000040 /* primeprofast-tutorials.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000040 /* primeprofast-tutorials.json */; };
+		A10000010000000000000041 /* arcade in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000041 /* arcade */; };
 		A10000010000000000000031 /* ppf_pm_tap.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* ppf_pm_tap.wav */; };
 		A10000010000000000000032 /* ppf_pm_prime.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* ppf_pm_prime.wav */; };
 		A10000010000000000000033 /* ppf_pm_composite.wav in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033 /* ppf_pm_composite.wav */; };
@@ -49,7 +50,6 @@
 		A20000010000000000000005 /* MenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuView.swift; sourceTree = "<group>"; };
 		A20000010000000000000006 /* ResultPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultPanel.swift; sourceTree = "<group>"; };
 		A20000010000000000000007 /* PPFNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFNative.swift; sourceTree = "<group>"; };
-		A20000010000000000000008 /* PPFBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PPFBridge.mm; sourceTree = "<group>"; };
 		A20000010000000000000009 /* IntervalPrimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntervalPrimesView.swift; sourceTree = "<group>"; };
 		A20000010000000000000010 /* RandomPrimesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomPrimesView.swift; sourceTree = "<group>"; };
 		A20000010000000000000011 /* PrimeTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeTestView.swift; sourceTree = "<group>"; };
@@ -69,6 +69,8 @@
 		A20000010000000000000028 /* PrimeMatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeMatchView.swift; sourceTree = "<group>"; };
 		A20000010000000000000029 /* PrimeArcadeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrimeArcadeView.swift; sourceTree = "<group>"; };
 		A20000010000000000000030 /* AppIcon-1024.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"; sourceTree = "<group>"; };
+		A20000010000000000000040 /* primeprofast-tutorials.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "../../shared/primeprofast-tutorials.json"; sourceTree = SOURCE_ROOT; };
+		A20000010000000000000041 /* arcade */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "../../shared/arcade"; sourceTree = SOURCE_ROOT; };
 		A20000010000000000000031 /* ppf_pm_tap.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_tap.wav; sourceTree = "<group>"; };
 		A20000010000000000000032 /* ppf_pm_prime.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_prime.wav; sourceTree = "<group>"; };
 		A20000010000000000000033 /* ppf_pm_composite.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = ppf_pm_composite.wav; sourceTree = "<group>"; };
@@ -107,6 +109,8 @@
 				A50000010000000000000009 /* Resources */,
 				A20000010000000000000019 /* Assets.xcassets */,
 				A20000010000000000000030 /* AppIcon-1024.png */,
+				A20000010000000000000040 /* primeprofast-tutorials.json */,
+				A20000010000000000000041 /* arcade */,
 				A20000010000000000000020 /* Info.plist */,
 				A20000010000000000000021 /* PrimeProFast-Bridging-Header.h */,
 			);
@@ -136,7 +140,6 @@
 			isa = PBXGroup;
 			children = (
 				A20000010000000000000007 /* PPFNative.swift */,
-				A20000010000000000000008 /* PPFBridge.mm */,
 			);
 			path = Native;
 			sourceTree = "<group>";
@@ -265,6 +268,8 @@
 			files = (
 				A10000010000000000000019 /* Assets.xcassets in Resources */,
 				A10000010000000000000025 /* AppIcon-1024.png in Resources */,
+				A10000010000000000000040 /* primeprofast-tutorials.json in Resources */,
+				A10000010000000000000041 /* arcade in Resources */,
 				A10000010000000000000031 /* ppf_pm_tap.wav in Resources */,
 				A10000010000000000000032 /* ppf_pm_prime.wav in Resources */,
 				A10000010000000000000033 /* ppf_pm_composite.wav in Resources */,
@@ -307,7 +312,6 @@
 				A10000010000000000000005 /* MenuView.swift in Sources */,
 				A10000010000000000000006 /* ResultPanel.swift in Sources */,
 				A10000010000000000000007 /* PPFNative.swift in Sources */,
-				A10000010000000000000008 /* PPFBridge.mm in Sources */,
 				A10000010000000000000009 /* IntervalPrimesView.swift in Sources */,
 				A10000010000000000000010 /* RandomPrimesView.swift in Sources */,
 				A10000010000000000000011 /* PrimeTestView.swift in Sources */,

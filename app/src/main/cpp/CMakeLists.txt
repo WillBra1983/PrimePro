@@ -24,6 +24,13 @@ add_library(ppf_engine STATIC
     ppf_engine.cpp
     ppf_standalone_engine.cpp
     ppf_c_api.cpp
+    ppf_arcade.cpp
+    ppf_prime_cards.cpp
+    ppf_legendre_large.cpp
+    ppf_mersenne.cpp
+    ppf_factorization.cpp
+    ppf_integer_expression.cpp
+    ppf_match.cpp
 )
 
 target_link_libraries(ppf_engine ${GMP_LIB_PATH}/libgmp.a ${GMP_LIB_PATH}/libgmpxx.a)

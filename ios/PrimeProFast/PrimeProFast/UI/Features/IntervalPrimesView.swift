@@ -2,6 +2,7 @@ import SwiftUI
 
 struct IntervalPrimesView: View {
     @State private var maxN = "1000000"
+    @State private var textExport: PPFReportExport?
     @EnvironmentObject private var appState: AppState
 
     private let maxAllowed: Int64 = 50_000_000_000
@@ -20,11 +21,21 @@ struct IntervalPrimesView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(PPFTheme.primary)
+            .disabled(loading.wrappedValue)
 
             Button("💾 Calcular e Salvar em TXT") {
                 Task { await calcular(modo: .salvarTxt, result: result, loading: loading) }
             }
             .buttonStyle(.bordered)
+            .disabled(loading.wrappedValue)
+            .sheet(item: $textExport) { item in
+                PPFReportExportSheet(export: item) { saved in
+                    textExport = nil
+                    result.wrappedValue = saved ? "Arquivo TXT salvo." : "Salvamento em TXT cancelado."
+                    try? FileManager.default.removeItem(at: item.url.deletingLastPathComponent())
+                }
+                .interactiveDismissDisabled()
+            }
         }
     }
 
@@ -33,11 +44,12 @@ struct IntervalPrimesView: View {
         case salvarTxt
     }
 
-    private func calcular(
+    @MainActor private func calcular(
         modo: ModoCalculo,
         result: Binding<String>,
         loading: Binding<Bool>
     ) async {
+        guard !loading.wrappedValue else { return }
         guard let n = Int64(maxN.trimmingCharacters(in: .whitespacesAndNewlines)), n > 0 else {
             result.wrappedValue = "Digite um número maior que 0."
             return
@@ -72,10 +84,13 @@ struct IntervalPrimesView: View {
 
         case .salvarTxt:
             do {
-                let url = try PPFResultFiles.writeIntervalPermanentFile(texto, n: n)
+                let url = try await Task.detached {
+                    try PPFResultFiles.writeIntervalTextExport(texto, n: n)
+                }.value
                 await MainActor.run {
                     loading.wrappedValue = false
-                    result.wrappedValue = "Arquivo salvo com sucesso em:\n\(url.path)"
+                    result.wrappedValue = "Escolha onde salvar o arquivo TXT."
+                    textExport = PPFReportExport(url: url, save: true)
                 }
             } catch {
                 await MainActor.run {

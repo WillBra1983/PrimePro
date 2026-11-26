@@ -4,6 +4,8 @@ android {
     namespace 'com.primeprofast.app'
     compileSdkVersion 36
     ndkVersion "29.0.13113456"
+
+    sourceSets.main.assets.srcDir rootProject.file('shared')
     
     // Habilitar BuildConfig para campos customizados
     buildFeatures {

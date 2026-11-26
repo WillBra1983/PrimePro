@@ -22,6 +22,9 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <algorithm>
+#include <cstdlib>
+#include <iterator>
 #include <random>
 #include <fstream>
 #include <iostream>
@@ -36,6 +39,31 @@ struct PrimoMpzEntry {
     mpz_class valor;
     int thread_id = 0;
 };
+
+static bool ja_encontrado(const std::vector<PrimoMpzEntry>& primos, const mpz_class& candidato) {
+    return std::any_of(primos.begin(), primos.end(), [&](const PrimoMpzEntry& p) {
+        return p.valor == candidato;
+    });
+}
+
+static bool passa_filtros_moderados(const mpz_class& candidato) {
+    constexpr unsigned filtros[] = {3, 5, 7, 11, 13, 97, 101, 103, 107, 109, 113, 127,
+                                     131, 137, 139, 149, 151, 157, 163, 167, 173, 179,
+                                     181, 191, 193, 197, 199};
+    for (const auto p : filtros) {
+        if (mpz_divisible_ui_p(candidato.get_mpz_t(), p)) return false;
+    }
+    return true;
+}
+
+static void preencher_aleatorio(std::vector<unsigned char>& bytes) {
+#if defined(__ANDROID__) || defined(__APPLE__)
+    arc4random_buf(bytes.data(), bytes.size());
+#else
+    static thread_local std::random_device rng;
+    for (auto& byte : bytes) byte = static_cast<unsigned char>(rng());
+#endif
+}
 
 // Alinhado ao Java (Primos Aleatórios): Math.min(availableProcessors(), 8) na faixa grande.
 // Antes: 8193–16384 usava só 2 threads — mesma busca que Java faz com até 8, daí tempos irreais.
@@ -96,6 +124,7 @@ struct PrimeGenerationJob {
 };
 
 static PrimeGenerationJob g_prime_job;
+static std::mutex g_prime_job_lifecycle;
 
 static std::string resumir_numero(const std::string& numero) {
     if (numero.size() <= 32) {
@@ -124,7 +153,8 @@ static std::string montar_resultado_job(const PrimeGenerationJob& job) {
         return resultado.str();
     }
 
-    resultado << "GERACAO DE PRIMOS GRANDES CONCLUIDA!\n";
+    resultado << (job.primos_mpz.size() == static_cast<size_t>(job.quantity)
+        ? "GERACAO DE PRIMOS GRANDES CONCLUIDA!\n" : "BUSCA NATIVA INTERROMPIDA - RESULTADO PARCIAL\n");
     resultado << "==========================================\n";
     resultado << "Tempo total: " << std::fixed << std::setprecision(4) << tempo_total << " segundos\n";
     resultado << "Bits: " << job.bits << "\n";
@@ -141,10 +171,10 @@ static std::string montar_resultado_job(const PrimeGenerationJob& job) {
 
     for (size_t i = 0; i < job.primos_mpz.size(); i++) {
         const auto& e = job.primos_mpz[i];
-        size_t nd = mpz_sizeinbase(e.valor.get_mpz_t(), 10);
+        const auto decimal = e.valor.get_str();
         resultado << "Primo #" << (i + 1) << " (Thread " << e.thread_id << "):\n";
-        resultado << resumir_mpz(e.valor) << "\n";
-        resultado << "(" << job.bits << " bits, " << nd << " digitos decimais)\n";
+        resultado << resumir_numero(decimal) << "\n";
+        resultado << "(" << job.bits << " bits, " << decimal.size() << " digitos decimais)\n";
         resultado << "------------------------------------------\n";
     }
 
@@ -190,8 +220,9 @@ static void cancelar_job_nativo_se_necessario() {
 }
 
 void iniciar_geracao_primos_gigantes_job(
-    int num_bits, int num_primos, int num_threads, const std::string& caminho_arquivo) {
+    int num_bits, int num_primos, int num_threads, const std::string& caminho_arquivo, bool moderate_random) {
 
+    std::lock_guard<std::mutex> lock_lifecycle(g_prime_job_lifecycle);
     cancelar_job_nativo_se_necessario();
 
     std::string caminho_out = caminho_arquivo;
@@ -214,7 +245,7 @@ void iniciar_geracao_primos_gigantes_job(
         g_prime_job.end_time = {};
     }
 
-    g_prime_job.worker = std::thread([]() {
+    g_prime_job.worker = std::thread([moderate_random]() {
         std::vector<PrimoMpzEntry> resultados_locais;
         std::mutex resultados_mutex;
         std::atomic<bool> parar_threads(false);
@@ -232,57 +263,59 @@ void iniciar_geracao_primos_gigantes_job(
                 caminho_copy = g_prime_job.caminho_saida;
             }
 
+            const auto deadline = moderate_random
+                ? std::chrono::steady_clock::now() + std::chrono::milliseconds(std::max(60000, bits_locais * 100))
+                : std::chrono::steady_clock::time_point::max();
+            const auto continuar = [&]() {
+                return !parar_threads.load() && !g_prime_job.stop_requested.load() &&
+                       (!moderate_random || std::chrono::steady_clock::now() < deadline);
+            };
             auto thread_func = [&](int thread_id) {
                 gmp_randclass rng(gmp_randinit_default);
-                std::random_device rd;
-                rng.seed(rd() + thread_id + std::chrono::high_resolution_clock::now().time_since_epoch().count());
+                std::vector<unsigned char> bytes;
+                if (moderate_random) {
+                    bytes.resize((bits_locais + 7) / 8);
+                } else {
+                    std::random_device rd;
+                    rng.seed(rd() + thread_id + std::chrono::high_resolution_clock::now().time_since_epoch().count());
+                }
+                const auto first_byte_mask = 0xffu >> ((8 - bits_locais % 8) % 8);
+                constexpr unsigned long filtros_gigantes[] = {
+                    3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97
+                };
+                const int reps_mr = moderate_random ? 25 : (bits_locais > 8192 ? 2 : 3);
 
-                while (!parar_threads.load() && !g_prime_job.stop_requested.load()) {
+                while (continuar()) {
                     // Evita mutex no caminho quente: found_count atualiza junto com cada primo aceito.
                     if (g_prime_job.found_count.load() >= quantidade_local) {
                         parar_threads.store(true);
                         break;
                     }
 
-                    mpz_class candidato = rng.get_z_bits(bits_locais);
-                    candidato |= (mpz_class(1) << (bits_locais - 1));
-                    candidato |= 1;
-
-                    // Filtros pequenos (rápidos) antes do MR; extras 17–97 reduzem chamadas caras ao MR.
-                    static const int primos_filtro[] = {3, 5, 7, 11, 13};
-                    bool divisivel = false;
-                    for (int primo : primos_filtro) {
-                        if (mpz_divisible_ui_p(candidato.get_mpz_t(), primo)) {
-                            divisivel = true;
-                            break;
-                        }
+                    mpz_class candidato;
+                    if (moderate_random) {
+                        preencher_aleatorio(bytes);
+                        bytes.front() &= first_byte_mask;
+                        mpz_import(candidato.get_mpz_t(), bytes.size(), 1, 1, 0, 0, bytes.data());
+                    } else {
+                        candidato = rng.get_z_bits(bits_locais);
                     }
-                    if (divisivel) {
-                        g_prime_job.attempts.fetch_add(1);
-                        continue;
-                    }
-
-                    static const unsigned long filtros_medios[] = {
-                        17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97
-                    };
-                    bool composto_pequeno = false;
-                    for (unsigned long p : filtros_medios) {
-                        if (mpz_fdiv_ui(candidato.get_mpz_t(), p) == 0) {
-                            composto_pequeno = true;
-                            break;
-                        }
-                    }
-                    if (composto_pequeno) {
-                        g_prime_job.attempts.fetch_add(1);
-                        continue;
-                    }
-
+                    mpz_setbit(candidato.get_mpz_t(), bits_locais - 1);
+                    mpz_setbit(candidato.get_mpz_t(), 0);
                     g_prime_job.attempts.fetch_add(1);
-                    // bits > 8192: MR com 2 rodadas (GMP) — menos trabalho por candidato; ainda teste probabilístico.
-                    const int reps_mr = (bits_locais > 8192) ? 2 : 3;
+
+                    if (moderate_random) {
+                        if (!passa_filtros_moderados(candidato)) continue;
+                    } else {
+                        const auto divisivel = std::any_of(std::begin(filtros_gigantes), std::end(filtros_gigantes),
+                            [&](unsigned long p) { return mpz_divisible_ui_p(candidato.get_mpz_t(), p) != 0; });
+                        if (divisivel) continue;
+                    }
                     if (mpz_probab_prime_p(candidato.get_mpz_t(), reps_mr) > 0) {
                         std::lock_guard<std::mutex> lock(resultados_mutex);
-                        if ((int)resultados_locais.size() < quantidade_local) {
+                        if (continuar() &&
+                            (int)resultados_locais.size() < quantidade_local &&
+                            !ja_encontrado(resultados_locais, candidato)) {
                             PrimoMpzEntry entrada;
                             entrada.valor = candidato;
                             entrada.thread_id = thread_id;
@@ -336,9 +369,12 @@ void iniciar_geracao_primos_gigantes_job(
             g_prime_job.error = "Falha inesperada na geracao nativa";
         }
 
-        g_prime_job.end_time = std::chrono::steady_clock::now();
-        g_prime_job.running.store(false);
-        g_prime_job.completed.store(true);
+        {
+            std::lock_guard<std::mutex> lock(g_prime_job.mutex);
+            g_prime_job.end_time = std::chrono::steady_clock::now();
+            g_prime_job.running.store(false);
+            g_prime_job.completed.store(true);
+        }
     });
 }
 
@@ -351,6 +387,7 @@ bool geracao_primos_gigantes_job_concluido() {
 }
 
 std::string obter_resultado_geracao_primos_gigantes_job() {
+    std::lock_guard<std::mutex> lock_lifecycle(g_prime_job_lifecycle);
     if (g_prime_job.worker.joinable() && g_prime_job.completed.load()) {
         g_prime_job.worker.join();
     }
@@ -359,10 +396,8 @@ std::string obter_resultado_geracao_primos_gigantes_job() {
 }
 
 void cancelar_geracao_primos_gigantes_job() {
+    std::lock_guard<std::mutex> lock_lifecycle(g_prime_job_lifecycle);
     cancelar_job_nativo_se_necessario();
-    g_prime_job.running.store(false);
-    g_prime_job.completed.store(true);
-    g_prime_job.end_time = std::chrono::steady_clock::now();
 }
 
 // Gera uma lista de primos pequenos até um limite usando Crivo de Eratóstenes
@@ -434,12 +469,12 @@ bool testar_primalidade_gigante(const std::string& numero, int repeticoes) {
 }
 
 std::string gerar_primos_grandes(int num_bits, int num_primos, const std::string& nome_arquivo_str, bool salvar_arquivo) {
-    auto start_time = std::chrono::high_resolution_clock::now();
+    const auto start_time = std::chrono::steady_clock::now();
 
     const int primos_necessarios = num_primos;
     std::vector<PrimoMpzEntry> primos_encontrados;
     std::mutex mtx;
-    bool parar_threads = false;
+    std::atomic_bool parar_threads{false};
     const int threads_totais = threads_adaptativas(num_bits);
 
     auto thread_func = [&](int thread_id) {
@@ -460,133 +495,12 @@ std::string gerar_primos_grandes(int num_bits, int num_primos, const std::string
             candidato |= (mpz_class(1) << (num_bits - 1));
             candidato |= 1;
 
-            static const int primos_filtro[] = {3, 5, 7, 11, 13};
-            static const int num_primos_filtro = 5;
-            bool divisivel = false;
-            for (int i = 0; i < num_primos_filtro; ++i) {
-                if (mpz_divisible_ui_p(candidato.get_mpz_t(), primos_filtro[i])) {
-                    divisivel = true;
-                    break;
-                }
-            }
-
-            if (divisivel) {
-                continue;
-            }
-
-            unsigned long mod97 = mpz_fdiv_ui(candidato.get_mpz_t(), 97);
-            if (mod97 == 0) {
-                continue;
-            }
-
-            unsigned long mod101 = mpz_fdiv_ui(candidato.get_mpz_t(), 101);
-            if (mod101 == 0) {
-                continue;
-            }
-
-            unsigned long mod103 = mpz_fdiv_ui(candidato.get_mpz_t(), 103);
-            if (mod103 == 0) {
-                continue;
-            }
-
-            unsigned long mod107 = mpz_fdiv_ui(candidato.get_mpz_t(), 107);
-            if (mod107 == 0) {
-                continue;
-            }
-
-            unsigned long mod109 = mpz_fdiv_ui(candidato.get_mpz_t(), 109);
-            if (mod109 == 0) {
-                continue;
-            }
-
-            unsigned long mod113 = mpz_fdiv_ui(candidato.get_mpz_t(), 113);
-            if (mod113 == 0) {
-                continue;
-            }
-
-            unsigned long mod127 = mpz_fdiv_ui(candidato.get_mpz_t(), 127);
-            if (mod127 == 0) {
-                continue;
-            }
-
-            unsigned long mod131 = mpz_fdiv_ui(candidato.get_mpz_t(), 131);
-            if (mod131 == 0) {
-                continue;
-            }
-
-            unsigned long mod137 = mpz_fdiv_ui(candidato.get_mpz_t(), 137);
-            if (mod137 == 0) {
-                continue;
-            }
-
-            unsigned long mod139 = mpz_fdiv_ui(candidato.get_mpz_t(), 139);
-            if (mod139 == 0) {
-                continue;
-            }
-
-            unsigned long mod149 = mpz_fdiv_ui(candidato.get_mpz_t(), 149);
-            if (mod149 == 0) {
-                continue;
-            }
-
-            unsigned long mod151 = mpz_fdiv_ui(candidato.get_mpz_t(), 151);
-            if (mod151 == 0) {
-                continue;
-            }
-
-            unsigned long mod157 = mpz_fdiv_ui(candidato.get_mpz_t(), 157);
-            if (mod157 == 0) {
-                continue;
-            }
-
-            unsigned long mod163 = mpz_fdiv_ui(candidato.get_mpz_t(), 163);
-            if (mod163 == 0) {
-                continue;
-            }
-
-            unsigned long mod167 = mpz_fdiv_ui(candidato.get_mpz_t(), 167);
-            if (mod167 == 0) {
-                continue;
-            }
-
-            unsigned long mod173 = mpz_fdiv_ui(candidato.get_mpz_t(), 173);
-            if (mod173 == 0) {
-                continue;
-            }
-
-            unsigned long mod179 = mpz_fdiv_ui(candidato.get_mpz_t(), 179);
-            if (mod179 == 0) {
-                continue;
-            }
-
-            unsigned long mod181 = mpz_fdiv_ui(candidato.get_mpz_t(), 181);
-            if (mod181 == 0) {
-                continue;
-            }
-
-            unsigned long mod191 = mpz_fdiv_ui(candidato.get_mpz_t(), 191);
-            if (mod191 == 0) {
-                continue;
-            }
-
-            unsigned long mod193 = mpz_fdiv_ui(candidato.get_mpz_t(), 193);
-            if (mod193 == 0) {
-                continue;
-            }
-
-            unsigned long mod197 = mpz_fdiv_ui(candidato.get_mpz_t(), 197);
-            if (mod197 == 0) {
-                continue;
-            }
-
-            unsigned long mod199 = mpz_fdiv_ui(candidato.get_mpz_t(), 199);
-            if (mod199 == 0) {
-                continue;
-            }
+            if (!passa_filtros_moderados(candidato)) continue;
 
             if (mpz_probab_prime_p(candidato.get_mpz_t(), 5) > 0) {
                 std::lock_guard<std::mutex> lock(mtx);
-                if ((int)primos_encontrados.size() < primos_necessarios) {
+                if ((int)primos_encontrados.size() < primos_necessarios &&
+                    !ja_encontrado(primos_encontrados, candidato)) {
                     PrimoMpzEntry entrada;
                     entrada.valor = std::move(candidato);
                     entrada.thread_id = thread_id;
@@ -607,7 +521,7 @@ std::string gerar_primos_grandes(int num_bits, int num_primos, const std::string
         thread.join();
     }
 
-    auto end_time = std::chrono::high_resolution_clock::now();
+    const auto end_time = std::chrono::steady_clock::now();
     double tempo_total = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count() / 1000.0;
 
     std::string err_arquivo;
