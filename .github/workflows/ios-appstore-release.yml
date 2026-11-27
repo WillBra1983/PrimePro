@@ -66,6 +66,8 @@ jobs:
           missing=0
           for asset in shared/primeprofast-tutorials.json \
             shared/arcade/{airplane,bicycle,car,motorcycle,rocket,spaceship}.png \
+            shared/arcade/road-tree.png \
+            shared/arcade/earth.png \
             shared/arcade/{road,space}.jpg; do
             if [ ! -s "$asset" ]; then
               echo "::error file=$asset::Recurso ausente ou vazio no commit. Inclua shared/ no Git antes de executar o workflow."
@@ -83,6 +85,17 @@ jobs:
         run: |
           xcodebuild -version
           xcodebuild -showsdks | grep -E 'iphoneos|iphonesimulator' || true
+
+      - name: Testar o núcleo compartilhado dos jogos
+        run: |
+          set -euo pipefail
+          if ! xcrun clang++ -std=c++17 tests/arcade_rules_test.cpp \
+            app/src/main/cpp/ppf_arcade.cpp app/src/main/cpp/ppf_prime_cards.cpp \
+            -o "$RUNNER_TEMP/arcade_rules_test"; then
+            echo "::error::Confira se o commit inclui as mudanças em app/src/main/cpp e tests/arcade_rules_test.cpp junto com a tela dos jogos."
+            exit 1
+          fi
+          "$RUNNER_TEMP/arcade_rules_test"
 
       - name: Cache GMP iOS (libgmp + libgmpxx)
         uses: actions/cache@v4

@@ -32,6 +32,61 @@ int ppf_arcade_stage(int score, bool flight) {
     return score > 0 ? score / (flight ? 600 : 450) : 0;
 }
 
+int ppf_arcade_phase_target(int stage, bool flight) {
+    if (stage < 0) return 0;
+    return (flight ? 600 : 450) + std::min(stage, 12) * (flight ? 45 : 35);
+}
+
+int ppf_arcade_phase_duration_ms(bool flight) {
+    return flight ? 50000 : 40000;
+}
+
+int ppf_arcade_phase_outcome(int stage, bool flight, int elapsed_ms, int points, bool crashed) {
+    if (crashed) return PPF_ARCADE_PHASE_CRASHED;
+    if (elapsed_ms < ppf_arcade_phase_duration_ms(flight)) return PPF_ARCADE_PHASE_RUNNING;
+    return points >= ppf_arcade_phase_target(stage, flight) ? PPF_ARCADE_PHASE_PASSED : PPF_ARCADE_PHASE_BELOW_TARGET;
+}
+
+PPFArcadeBoss ppf_arcade_boss(int stage) {
+    constexpr int exponents[] = {
+        2,3,5,7,13,17,19,31,61,89,107,127,521,607,1279,2203,2281,3217,4253,4423,9689,9941,
+        11213,19937,21701,23209,44497,86243,110503,132049,216091,756839,859433,1257787,1398269,
+        2976221,3021377,6972593,13466917,20996011,24036583,25964951,30402457,32582657,37156667,
+        42643801,43112609,57885161,74207281,77232917,82589933,136279841
+    };
+    // Leading decimal digits of 2^p - 1; the large integers need not be constructed in the game.
+    constexpr int prefixes[] = {
+        3,7,31,127,819,131,524,214,230,618,162,170,686,531,104,147,446,259,190,285,478,346,
+        281,431,448,402,854,536,521,512,746,174,129,412,814,623,127,437,924,125,299,122,315,
+        124,202,169,316,581,300,467,148,881
+    };
+    static_assert(sizeof(exponents) / sizeof(int) == PPF_ARCADE_CAMPAIGN_STAGES, "Boss exponent count");
+    static_assert(sizeof(prefixes) / sizeof(int) == PPF_ARCADE_CAMPAIGN_STAGES, "Boss prefix count");
+    if (stage < 0 || stage >= PPF_ARCADE_CAMPAIGN_STAGES) return {};
+    return {exponents[stage], prefixes[stage], 112 + stage * 7, stage % 3};
+}
+
+int ppf_arcade_enemy_role(bool prime, bool flight, int stage, uint32_t seed) {
+    if (prime) return PPF_ARCADE_REGULAR;
+    if (flight && seed % 13 == 0) return PPF_ARCADE_REPAIR;
+    return seed % 100 < 24u + static_cast<unsigned>(std::min(12, std::max(0, stage)))
+        ? PPF_ARCADE_ARMED : PPF_ARCADE_REGULAR;
+}
+
+int ppf_arcade_add_charge(int charge, int prime) {
+    const int current = std::min(100, std::max(0, charge));
+    return current + std::min(100 - current, std::min(16, std::max(1, prime / 4)));
+}
+
+int ppf_arcade_boss_damage(int charge) {
+    return 8 + std::min(100, std::max(0, charge)) / 12;
+}
+
+int ppf_arcade_flight_outcome(int lives, int boss_health) {
+    if (lives <= 0) return PPF_ARCADE_PHASE_CRASHED;
+    return boss_health == 0 ? PPF_ARCADE_PHASE_PASSED : PPF_ARCADE_PHASE_RUNNING;
+}
+
 int ppf_arcade_add_score(int score, int points) {
     score = std::max(0, score);
     if (points <= 0) return score;
@@ -68,11 +123,29 @@ PPFArcadeSpawn ppf_arcade_spawn(bool flight, int score, uint32_t seed, int previ
     }
     const int pace = std::max(0, std::min(430, static_cast<int>(std::max(0, score) * 0.28)));
     const int delay = std::max(920, 1380 - pace) + draw(0, 649);
-    return {number, prime, 0, delay, 0};
+    return {number, prime, 0, delay, draw(0, 2)};
 }
 
 double ppf_arcade_runner_speed(int score) {
     return 220 + std::min(135.0, std::max(0, score) * 0.46);
+}
+
+bool ppf_arcade_road_hit(double previous_x, double previous_y, double x, double y,
+                         double target_x, double target_y, double height) {
+    if (height <= 0) return false;
+    double enter = 0, leave = 1;
+    // Intersect the relative movement during this frame with the obstacle box.
+    const auto clip = [&](double start, double end, double radius) {
+        const double delta = end - start;
+        if (delta == 0) return start > -radius && start < radius;
+        const double a = (-radius - start) / delta;
+        const double b = (radius - start) / delta;
+        enter = std::max(enter, std::min(a, b));
+        leave = std::min(leave, std::max(a, b));
+        return enter < leave;
+    };
+    return clip(previous_x - target_x, x - target_x, 38)
+        && clip(previous_y - target_y, y - target_y, std::min(26.0, height * 0.05));
 }
 
 double ppf_arcade_jump_height(double seconds) {

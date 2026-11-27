@@ -49,7 +49,7 @@ private enum PrimeMatchPower: String, CaseIterable {
     }
 }
 
-private final class PrimeMatchSoundPlayer: ObservableObject {
+final class PrimeMatchSoundPlayer: ObservableObject {
     private var players: [String: AVAudioPlayer] = [:]
 
     init() {

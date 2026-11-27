@@ -717,7 +717,8 @@ private final class PrimeArcadeScene: SKScene {
     private func completePhaseIfNeeded(crashed: Bool = false, restored: Bool = false) -> Bool {
         guard finishedPhase == nil else { return false }
         let elapsed = Int32((phaseElapsed * 1000).rounded(.down))
-        let outcome = flight ? ppf_arcade_flight_outcome(crashed ? 0 : Int32(lives), bossHealth)
+        let remainingLives = Int32(crashed ? 0 : lives)
+        let outcome = flight ? ppf_arcade_flight_outcome(remainingLives, bossHealth)
             : ppf_arcade_phase_outcome(Int32(stage), false, elapsed, phasePoints, crashed)
         guard outcome != Int32(PPF_ARCADE_PHASE_RUNNING) else { return false }
         let passed = outcome == Int32(PPF_ARCADE_PHASE_PASSED)

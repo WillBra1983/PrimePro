@@ -51,13 +51,14 @@
     ["O que treina","<p>Além de diversão, o jogo cria intuição sobre paridade, divisibilidade, compostos óbvios e primos pequenos, sem transformar a experiência em uma aula formal.</p>"]
   ],
   "Corrida Prima": [
-    ["Ideia do jogo","<p>Cada composto pulado e cada primo recolhido valem o número que mostram. Pular um 12 e recolher um 7 vale 19 pontos. A distância por si só não pontua.</p>"],
-    ["Como jogar","<p>Toque na pista ou use <strong>Pular</strong> para saltar sobre compostos. Encoste nos primos para recolhê-los. Aos 450 pontos, você passa da bicicleta para a moto; aos 900, para o carro.</p>"],
-    ["O que treina","<p>Reconhecer números primos rapidamente ajuda a decidir quando pular e quando continuar correndo.</p>"]
+    ["Ideia do jogo","<p>Desvie dos compostos ou destrua-os com um disparo. Bata nos primos para pontuar: se você atirar neles, eles se perdem. Os carros compostos com marca laranja vêm na contramão, mudam de faixa e podem disparar. Bater num composto ou receber um tiro encerra a corrida. A distância não pontua.</p>"],
+    ["Como jogar","<p>Arraste com <strong>um dedo</strong> para manobrar e com <strong>dois dedos</strong> para manobrar e atirar. Complete os <strong>40 segundos</strong> e alcance a meta da fase para avançar. Mesmo após atingir a meta, você pode continuar jogando para melhorar o recorde. Use <strong>Fases</strong> para rejogar.</p>"],
+    ["O que treina","<p>Reconhecer números primos rapidamente ajuda a planejar a próxima troca de faixa.</p>"]
   ],
   "Resgate Espacial": [
-    ["Ideia do jogo","<p>Cada composto destruído e cada primo resgatado valem o número que mostram. Resgatar um primo também ativa o escudo. Atirar em um primo ou apenas desviar de um composto não pontua.</p>"],
-    ["Como jogar","<p>Use a faixa abaixo do veículo. Arraste com <strong>um dedo</strong> para desviar e com <strong>dois dedos</strong> para mover e atirar. Aproxime-se dos primos para capturá-los.</p>"],
-    ["Progresso","<p>Aos 600 pontos, o avião dá lugar ao foguete; aos 1.200, à nave. O voo é infinito e o progresso fica salvo no aparelho.</p>"]
+    ["Missão: Defesa da Terra","<p>Uma frota tomou as estações que protegem as comunicações da Terra. Você começa na estação M1 e abre, uma por uma, as rotas até a defesa final em M51. Os chefes representam primos de Mersenne, números da forma <strong>2<sup>p</sup> − 1</strong>. Nos maiores, ∞ indica que só mostramos os três primeiros algarismos, não que o número seja infinito.</p><p>Fora do jogo, primos grandes ajudam a proteger comunicações em sistemas como o RSA. Os primos de Mersenne são uma classe especial, não as chaves que o RSA usa por padrão. Nem toda criptografia depende do mesmo tipo de problema matemático.</p>"],
+    ["Ideia do jogo","<p>Cada composto destruído e cada primo resgatado valem o número que mostram. Resgatar primos também ativa o escudo e aumenta a carga dos seus disparos contra o chefe. Colete <strong>+1</strong> para ganhar uma vida (até cinco). O halo laranja marca os compostos que disparam.</p>"],
+    ["Como jogar","<p>Use a faixa abaixo do veículo. Arraste com <strong>um dedo</strong> para desviar e com <strong>dois dedos</strong> para mover e atirar. Arraste para cima para avançar ou para baixo para recuar, sem mudar de posição ao tocar. Aproxime-se dos primos para capturá-los.</p>"],
+    ["Progresso","<p>Sobreviva aos <strong>50 segundos</strong> iniciais e derrote o chefe para vencer. <strong>Não há meta de pontos</strong>: a pontuação vale para o recorde da fase. Cada missão começa com três vidas. Use <strong>Fases</strong> para rejogar. Depois de defender a Terra em M51, M52 fica disponível como missão bônus.</p>"]
   ]
 }

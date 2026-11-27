@@ -61,6 +61,25 @@ PPFOddPerfectBatch ppf_scan_odd_perfect(int64_t first, int64_t last, int attempt
 int ppf_arcade_points(int number, bool prime, bool capture);
 int ppf_arcade_add_score(int score, int points);
 int ppf_arcade_stage(int score, bool flight);
+int ppf_arcade_phase_target(int stage, bool flight);
+int ppf_arcade_phase_duration_ms(bool flight);
+enum {
+    PPF_ARCADE_PHASE_RUNNING,
+    PPF_ARCADE_PHASE_PASSED,
+    PPF_ARCADE_PHASE_BELOW_TARGET,
+    PPF_ARCADE_PHASE_CRASHED
+};
+int ppf_arcade_phase_outcome(int stage, bool flight, int elapsed_ms, int points, bool crashed);
+enum {
+    PPF_ARCADE_CAMPAIGN_STAGES = 52,
+    PPF_ARCADE_REGULAR = 0, PPF_ARCADE_ARMED, PPF_ARCADE_REPAIR
+};
+typedef struct { int exponent, prefix, health, pattern; } PPFArcadeBoss;
+PPFArcadeBoss ppf_arcade_boss(int stage);
+int ppf_arcade_enemy_role(bool prime, bool flight, int stage, uint32_t seed);
+int ppf_arcade_add_charge(int charge, int prime);
+int ppf_arcade_boss_damage(int charge);
+int ppf_arcade_flight_outcome(int lives, int boss_health);
 int ppf_arcade_vehicle(int stage);
 typedef struct {
     int max_frame_ms;
@@ -101,6 +120,8 @@ enum {
 PPFArcadeRules ppf_arcade_rules(void);
 PPFArcadeSpawn ppf_arcade_spawn(bool flight, int score, uint32_t seed, int previous_number);
 double ppf_arcade_runner_speed(int score);
+bool ppf_arcade_road_hit(double previous_x, double previous_y, double x, double y,
+                         double target_x, double target_y, double height);
 double ppf_arcade_jump_height(double seconds);
 bool ppf_arcade_collides(int first, double x1, double y1, int second, double x2, double y2);
 bool ppf_arcade_runner_passed(double obstacle_x);
