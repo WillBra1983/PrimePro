@@ -68,6 +68,7 @@ jobs:
             shared/arcade/{airplane,bicycle,car,motorcycle,rocket,spaceship}.png \
             shared/arcade/road-tree.png \
             shared/arcade/earth.png \
+            shared/arcade/flight-zone-{0,1,2,3}.jpg \
             shared/arcade/{road,space}.jpg; do
             if [ ! -s "$asset" ]; then
               echo "::error file=$asset::Recurso ausente ou vazio no commit. Inclua shared/ no Git antes de executar o workflow."

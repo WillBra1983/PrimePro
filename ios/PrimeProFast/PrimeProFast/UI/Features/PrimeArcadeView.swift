@@ -39,6 +39,8 @@ struct PrimeArcadeView: View {
         ZStack {
             PrimeArcadeSurface(scene: scene)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .contentShape(Rectangle())
                 .accessibilityLabel(mode.title)
                 .accessibilityHidden(phaseResult != nil)
             if let phaseResult {
@@ -52,6 +54,7 @@ struct PrimeArcadeView: View {
         .background(Color(red: 0.06, green: 0.11, blue: 0.16).ignoresSafeArea())
         .navigationTitle(mode.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { dismiss() } label: { Image(systemName: "chevron.left") }
@@ -173,6 +176,9 @@ private final class PrimeArcadePiece: SKShapeNode {
     let travelSpeed: CGFloat
     let role: Int32
     var nextAttack = 0.0
+    var escortOffset: CGFloat?
+    var loot: Int32 = 0
+    var roadLevel: CGFloat = 0
 
     init(number: Int, prime: Bool, flight: Bool, travelSpeed: CGFloat, role: Int32) {
         self.number = number
@@ -200,18 +206,34 @@ private final class PrimeArcadePiece: SKShapeNode {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    func markLoot(_ kind: Int32) {
+        loot = kind
+        fillColor = kind == Int32(PPF_ARCADE_LOOT_SHIELD) ? .systemTeal : .systemBlue
+        strokeColor = .cyan
+        if let label = children.first as? SKLabelNode {
+            label.text = kind == Int32(PPF_ARCADE_LOOT_LIFE) ? "+1" :
+                kind == Int32(PPF_ARCADE_LOOT_PART) ? "PEÇA" :
+                kind == Int32(PPF_ARCADE_LOOT_SHIELD) ? "ESCUDO" : "ARMA"
+            label.fontSize = kind == Int32(PPF_ARCADE_LOOT_SHIELD) ? 9 : 12
+        }
+    }
 }
 
 private final class PrimeArcadeBolt: SKShapeNode {
     let velocity: CGVector
     let hostile: Bool
+    var roadLevel: CGFloat = 0
 
     init(at center: CGPoint, velocity: CGVector, hostile: Bool, number: Int) {
         self.velocity = velocity
         self.hostile = hostile
         super.init()
         let rect: CGRect
-        if hostile { rect = CGRect(x: -10, y: -10, width: 20, height: 20) }
+        if hostile {
+            let radius: CGFloat = velocity.dx < 0 && velocity.dy == 0 ? 13 : 10
+            rect = CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2)
+        }
         else if velocity.dx != 0 { rect = CGRect(x: -12, y: -3, width: 24, height: 6) }
         else { rect = CGRect(x: -5, y: -10, width: 10, height: 29) }
         path = CGPath(roundedRect: rect, cornerWidth: hostile ? 10 : 3, cornerHeight: hostile ? 10 : 3, transform: nil)
@@ -220,6 +242,14 @@ private final class PrimeArcadeBolt: SKShapeNode {
         glowWidth = 3
         position = center
         if hostile {
+            if velocity.dx < 0 && velocity.dy == 0 {
+                let trail = SKShapeNode(rectOf: CGSize(width: 42, height: 5), cornerRadius: 2.5)
+                trail.position.x = 24
+                trail.fillColor = .systemOrange
+                trail.strokeColor = .clear
+                trail.zPosition = -1
+                addChild(trail)
+            }
             let label = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
             label.text = String(number)
             label.fontSize = 12
@@ -253,7 +283,7 @@ private final class PrimeArcadeScene: SKScene {
     private let headlight = SKShapeNode()
     private var roadPhoto: SKSpriteNode?
     private var roadsideTrees: [SKSpriteNode] = []
-    private var roadDashes: [SKShapeNode] = []
+    private var roadDashes: [[SKShapeNode]] = []
     private var roadDistance: CGFloat = 0
     private var roadTime: TimeInterval = 0
     private var previousRoadPosition = CGPoint.zero
@@ -262,13 +292,32 @@ private final class PrimeArcadeScene: SKScene {
     private let bossNode = SKNode()
     private let bossShip = SKSpriteNode()
     private let bossAura = SKShapeNode(ellipseOf: CGSize(width: 114, height: 78))
+    private let bossCore = SKShapeNode(circleOfRadius: 12)
     private let bossBar = SKSpriteNode(color: .systemOrange, size: CGSize(width: 86, height: 6))
     private var bossHealth: Int32 = -1
     private var nextBossWave = 0.0
+    private var bossStarted = 0.0
+    private var bossGuarded: Bool {
+        bossHealth > 0 && ppf_arcade_boss_guarded(Int32(stage),
+            Int32(clamping: Int(max(0, combatClock - bossStarted) * 1000)),
+            pieces.contains { $0.parent != nil && $0.escortOffset != nil })
+    }
     private var wave = 0
     private var charge: Int32 = 0
+    private var parts = 0
+    private var weapon = 0
+    private var destroyed = 0
+    private var escortPrepared = false
+    private var bossScale: CGFloat { CGFloat(ppf_arcade_boss_scale_percent(Int32(stage))) / 100 }
     private var combatClock = 0.0
     private var stars: [SKShapeNode] = []
+    private static let zoneNames = ["Órbita azul", "Nebulosa", "Cinturão rochoso", "Gigante anelado", "Terra"]
+    private static let zoneAnchors: [CGFloat] = [0.78, 0.82, 0.16, 0.035, 0.50]
+    private lazy var zoneTextures = (0..<4).map { Self.texture("flight-zone-\($0)", ext: "jpg") }
+    private var flightBackdrops: [SKSpriteNode] = []
+    private var zoneBlend: CGFloat {
+        min(1, max(0, CGFloat((phaseElapsed / phaseDuration - 0.44) / 0.17)))
+    }
     private var planet: SKSpriteNode?
     private let earth = PrimeArcadeScene.texture("earth", ext: "png")
     private static let earthStage = Int(PPF_ARCADE_CAMPAIGN_STAGES) - 2
@@ -282,11 +331,13 @@ private final class PrimeArcadeScene: SKScene {
     private var sinceSave: TimeInterval = 0
     private var shotDelay = 0.0
     private var shieldTime = 0.0
+    private var shieldFlashUntil = 0.0
     private var hitGrace = 0.0
     private var steeringTouches: Set<UITouch> = []
-    private var twoFingerOrigin: CGPoint?
+    private var pilotTouch: UITouch?
     private var lastTouchCenter: CGPoint?
     private var firing = false
+    private var pendingShot = false
     private var visualTier = -1
     private var stage = 0
     private var phaseBaseScore: Int32 = 0
@@ -305,7 +356,9 @@ private final class PrimeArcadeScene: SKScene {
     private var installed = false
     private var highScore = 0
     private var flight: Bool { mode == .shooter }
-    private var phaseDuration: TimeInterval { Double(ppf_arcade_phase_duration_ms(flight)) / 1000 }
+    private var phaseDuration: TimeInterval {
+        Double(flight ? ppf_arcade_flight_duration_ms(Int32(stage)) : ppf_arcade_phase_duration_ms(false)) / 1000
+    }
     private var phasePoints: Int32 { max(0, score - phaseBaseScore) }
     private var pace: Int32 { Int32(min(25, stage) * (flight ? 600 : 40)) }
     var unlockedStage: Int {
@@ -319,7 +372,7 @@ private final class PrimeArcadeScene: SKScene {
 
     init(mode: PrimeArcadeMode) {
         self.mode = mode
-        let names = mode == .runner ? ["bicycle", "motorcycle", "car"] : ["airplane", "rocket", "spaceship"]
+        let names = mode == .runner ? ["motorcycle", "car", "car"] : ["airplane", "rocket", "spaceship"]
         vehicleTextures = names.map { Self.texture($0, ext: "png") }
         backdrop = Self.texture(mode == .runner ? "road" : "space", ext: "jpg")
         super.init(size: CGSize(width: 360, height: 420))
@@ -332,13 +385,16 @@ private final class PrimeArcadeScene: SKScene {
             phaseBaseScore = Int32(min(Int(score), max(0, storedBase)))
             phaseElapsed = min(phaseDuration, Double(max(0, defaults.integer(forKey: mode.storageKey + "_timed_elapsed"))) / 1000)
             let savedLives = defaults.object(forKey: mode.storageKey + "_remaining_lives") as? Int
-            lives = min(5, max(0, savedLives ?? Int(arcadeRules.lives)))
+            parts = min(12, max(0, defaults.integer(forKey: mode.storageKey + "_parts")))
+            weapon = min(12, max(0, defaults.integer(forKey: mode.storageKey + "_weapon")))
+            destroyed = max(0, defaults.integer(forKey: mode.storageKey + "_destroyed"))
+            lives = min(Int(ppf_arcade_max_lives(Int32(parts))), max(0, savedLives ?? Int(arcadeRules.lives)))
             charge = Int32(clamping: max(0, min(100, defaults.integer(forKey: mode.storageKey + "_campaign_charge"))))
             let savedHealth = defaults.object(forKey: mode.storageKey + "_campaign_boss_hp") as? Int ?? -1
             bossHealth = max(-1, min(bossData.health, Int32(clamping: savedHealth)))
             nextBossWave = 1.45
             let savedShield = defaults.integer(forKey: mode.storageKey + "_remaining_shield_ms")
-            shieldTime = Double(min(Int(arcadeRules.shield_ms), max(0, savedShield))) / 1000
+            shieldTime = Double(min(Int(PPF_ARCADE_PICKUP_SHIELD_MS), max(0, savedShield))) / 1000
         }
     }
 
@@ -410,6 +466,11 @@ private final class PrimeArcadeScene: SKScene {
             bossBar.position = CGPoint(x: -43, y: -47)
             bossNode.addChild(bossAura)
             bossNode.addChild(bossShip)
+            bossCore.fillColor = .systemOrange.withAlphaComponent(0.78)
+            bossCore.strokeColor = .systemYellow
+            bossCore.glowWidth = 7
+            bossCore.zPosition = 1
+            bossNode.addChild(bossCore)
             bossNode.addChild(track)
             bossNode.addChild(bossBar)
             field.addChild(bossNode)
@@ -451,6 +512,12 @@ private final class PrimeArcadeScene: SKScene {
                 for piece in pieces {
                     piece.position.x *= sx
                     piece.position.y *= sy
+                    piece.roadLevel *= sy
+                }
+                for shot in shots {
+                    shot.position.x *= sx
+                    shot.position.y *= sy
+                    shot.roadLevel *= sy
                 }
             }
             layoutScene()
@@ -485,21 +552,20 @@ private final class PrimeArcadeScene: SKScene {
             updateRoad()
             return
         }
-        let backgrounds: [SKColor] = [SKColor(red: 0.13, green: 0.28, blue: 0.43, alpha: 1),
-               SKColor(red: 0.21, green: 0.11, blue: 0.30, alpha: 1),
-               SKColor(red: 0.05, green: 0.24, blue: 0.27, alpha: 1)]
-        backgroundColor = backgrounds[tier]
-
-        if let backdrop {
-            let photo = SKSpriteNode(texture: backdrop)
-            let image = backdrop.size()
-            let scale = max(size.width / image.width, size.height / image.height)
-            photo.size = CGSize(width: image.width * scale, height: image.height * scale)
-            photo.position = CGPoint(x: size.width / 2, y: size.height / 2)
-            photo.color = backgrounds[tier]
-            photo.colorBlendFactor = 0.25
-            photo.zPosition = -2
+        backgroundColor = SKColor(red: 0.035, green: 0.06, blue: 0.095, alpha: 1)
+        let first = Int(ppf_arcade_flight_zone(Int32(stage), false))
+        let second = Int(ppf_arcade_flight_zone(Int32(stage), true))
+        flightBackdrops = (first == second ? [first] : [first, second]).enumerated().map { layer, zone in
+            let texture = zone < zoneTextures.count ? (zoneTextures[zone] ?? backdrop) : backdrop
+            let photo = SKSpriteNode(texture: texture, color: backgroundColor, size: size)
+            if let texture {
+                let image = texture.size()
+                let scale = 1.12 * max(size.width / image.width, size.height / image.height)
+                photo.size = CGSize(width: image.width * scale, height: image.height * scale)
+            }
+            photo.zPosition = CGFloat(-4 + layer)
             scenery.addChild(photo)
+            return photo
         }
 
         if mode == .shooter {
@@ -522,7 +588,7 @@ private final class PrimeArcadeScene: SKScene {
         line.strokeColor = .clear
         scenery.addChild(line)
         planet = nil
-        if let earth, stage <= Self.earthStage {
+        if let earth, stage == Self.earthStage {
             let globe = SKSpriteNode(texture: earth)
             let width = size.width * (stage == Self.earthStage ? 1.30 : 0.32)
             globe.size = CGSize(width: width, height: width)
@@ -544,6 +610,15 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     private func moveStars() {
+        for (index, photo) in flightBackdrops.enumerated() {
+            photo.alpha = index == 0 ? 1 : zoneBlend
+            let zone = Int(ppf_arcade_flight_zone(Int32(stage), index != 0))
+            let anchor = Self.zoneAnchors[zone]
+            let drift = 0.42 * min(anchor, 1 - anchor)
+            let overflow = photo.size.width - size.width
+            photo.position.x = photo.size.width / 2 - overflow * anchor + CGFloat(sin(combatClock / 18)) * overflow * drift
+            photo.position.y = size.height / 2 - CGFloat(sin(combatClock / 23)) * (photo.size.height - size.height) * 0.24
+        }
         for (index, star) in stars.enumerated() {
             let shift = CGFloat(index * 127) + CGFloat(combatClock * 1000) / CGFloat(7 + index % 13)
             star.position.y = size.height - shift.truncatingRemainder(dividingBy: max(1, size.height))
@@ -560,61 +635,87 @@ private final class PrimeArcadeScene: SKScene {
 
     private func laneY(_ lane: Int) -> CGFloat { size.height * (0.41 - 0.12 * CGFloat(lane)) }
 
+    private func roadY(_ x: CGFloat, _ y: CGFloat, inverse: Bool = false) -> CGFloat {
+        let along = max(-0.5, min(0.5, x / max(1, size.width) - 0.5))
+        let center = size.height * 0.30
+        let offset = size.height * 0.028 * along
+        let factor = 1 - 0.38 * along
+        if inverse { return center + (y - center - offset) / factor }
+        return center + (y - center) * factor + offset
+    }
+
+    private func roadPolygon(far: CGFloat, near: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 0, y: roadY(0, far)))
+        path.addLine(to: CGPoint(x: size.width, y: roadY(size.width, far)))
+        path.addLine(to: CGPoint(x: size.width, y: roadY(size.width, near)))
+        path.addLine(to: CGPoint(x: 0, y: roadY(0, near)))
+        path.closeSubpath()
+        return path
+    }
+
     private func buildRoad() {
-        let horizon = size.height / 2
+        let horizon = size.height * 0.32
         backgroundColor = SKColor(red: 0.33, green: 0.45, blue: 0.50, alpha: 1)
         roadPhoto = nil
         if let backdrop {
-            let sky = SKTexture(rect: CGRect(x: 0, y: 0.20, width: 1, height: 0.80), in: backdrop)
+            let sky = SKTexture(rect: CGRect(x: 0, y: 0.21, width: 1, height: 0.79), in: backdrop)
             let clip = SKCropNode()
-            let mask = SKSpriteNode(color: .white, size: CGSize(width: size.width, height: horizon))
-            mask.position = CGPoint(x: size.width / 2, y: horizon * 1.5)
+            let visible = size.height - horizon
+            let mask = SKSpriteNode(color: .white, size: CGSize(width: size.width, height: visible))
+            mask.position = CGPoint(x: size.width / 2, y: horizon + visible / 2)
             clip.maskNode = mask
             let photo = SKSpriteNode(texture: sky)
             let dimensions = sky.size()
-            let scale = max(size.width / dimensions.width, horizon / dimensions.height)
+            let scale = max(size.width / dimensions.width, visible / dimensions.height)
             photo.size = CGSize(width: dimensions.width * scale, height: dimensions.height * scale)
             photo.anchorPoint = .zero
             clip.addChild(photo)
             scenery.addChild(clip)
             roadPhoto = photo
         }
+        let shoulder = SKShapeNode(path: roadPolygon(far: size.height * 0.53, near: -size.height * 0.06))
+        shoulder.fillColor = SKColor(red: 0.34, green: 0.39, blue: 0.27, alpha: 1)
+        shoulder.strokeColor = .clear
+        shoulder.zPosition = 0.5
+        scenery.addChild(shoulder)
         roadsideTrees = []
         if let roadTree {
-            roadsideTrees = (0..<6).map { index in
+            roadsideTrees = (0..<18).map { index in
                 let tree = SKSpriteNode(texture: roadTree)
-                let width = CGFloat(95 + (index * 31) % 62)
-                tree.size = CGSize(width: width, height: width + 7)
+                let depth = index / 6
+                let width = CGFloat(56 + depth * 37 + (index * 31) % 36)
+                tree.size = CGSize(width: width, height: width)
                 tree.anchorPoint = .zero
                 tree.zPosition = 1
+                tree.alpha = CGFloat(155 + 50 * depth) / 255
                 scenery.addChild(tree)
                 return tree
             }
         }
-        let asphalt = SKSpriteNode(color: SKColor(red: 0.22, green: 0.25, blue: 0.25, alpha: 1),
-                                   size: CGSize(width: size.width, height: horizon))
-        asphalt.anchorPoint = .zero
+        let asphalt = SKShapeNode(path: roadPolygon(far: size.height * 0.485, near: size.height * 0.035))
+        asphalt.fillColor = SKColor(red: 0.22, green: 0.25, blue: 0.24, alpha: 1)
+        asphalt.strokeColor = .clear
         asphalt.zPosition = 2
-        if let backdrop {
-            asphalt.texture = SKTexture(rect: CGRect(x: 0, y: 0, width: 1, height: 0.16), in: backdrop)
-            asphalt.colorBlendFactor = 0.56
-        }
         scenery.addChild(asphalt)
-        let edge = SKSpriteNode(color: SKColor(red: 0.89, green: 0.83, blue: 0.64, alpha: 1),
-                                size: CGSize(width: size.width, height: 2))
-        edge.position = CGPoint(x: size.width / 2, y: horizon - 5)
-        edge.zPosition = 3
-        scenery.addChild(edge)
-        let count = Int(ceil(size.width / 72)) + 2
-        roadDashes = (0..<(count * 2)).map { index in
-            let dash = SKShapeNode(rectOf: CGSize(width: 34, height: 2))
-            let lane = index / count
-            dash.position.y = (laneY(lane) + laneY(lane + 1)) / 2
-            dash.fillColor = .white.withAlphaComponent(0.68)
-            dash.strokeColor = .clear
-            dash.zPosition = 3
-            scenery.addChild(dash)
-            return dash
+        for ratio in [CGFloat(0.485), CGFloat(0.035)] {
+            let edge = SKShapeNode()
+            edge.path = roadLine(from: 0, to: size.width, level: size.height * ratio)
+            edge.strokeColor = SKColor(red: 0.89, green: 0.83, blue: 0.64, alpha: 1)
+            edge.lineWidth = 2
+            edge.zPosition = 3
+            scenery.addChild(edge)
+        }
+        roadDashes = (0..<2).map { lane in
+            let stride = CGFloat(60 + lane * 22)
+            return (0..<(Int(ceil(size.width / stride)) + 2)).map { _ in
+                let dash = SKShapeNode()
+                dash.strokeColor = .white.withAlphaComponent(0.68)
+                dash.lineWidth = 2
+                dash.zPosition = 3
+                scenery.addChild(dash)
+                return dash
+            }
         }
         roadShade.size = size
         roadShade.position = CGPoint(x: size.width / 2, y: size.height / 2)
@@ -622,29 +723,42 @@ private final class PrimeArcadeScene: SKScene {
         scenery.addChild(roadShade)
     }
 
+    private func roadLine(from: CGFloat, to: CGFloat, level: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: from, y: roadY(from, level)))
+        path.addLine(to: CGPoint(x: to, y: roadY(to, level)))
+        return path
+    }
+
     private func updateRoad() {
-        let horizon = size.height / 2
+        let horizon = size.height * 0.32
         if let photo = roadPhoto {
-            let shift = CGFloat(0.50 + 0.42 * sin(Double(roadDistance) / 4500))
+            let shift = CGFloat(0.50 + 0.42 * sin(Double(roadDistance) / 10500))
             photo.position = CGPoint(x: -(photo.size.width - size.width) * shift, y: horizon)
         }
         let gap = max(138, size.width / 3)
         let cycle = gap * 6
         for (index, tree) in roadsideTrees.enumerated() {
-            let raw = (CGFloat(index) * gap - roadDistance * 0.47).truncatingRemainder(dividingBy: cycle)
-            tree.position = CGPoint(x: (raw + cycle).truncatingRemainder(dividingBy: cycle) - gap, y: horizon - 7)
+            let depth = CGFloat(index / 6)
+            let speed = 0.12 + depth * 0.21
+            let raw = (CGFloat(index % 6) * gap + depth * gap / 3 - roadDistance * speed).truncatingRemainder(dividingBy: cycle)
+            let x = (raw + cycle).truncatingRemainder(dividingBy: cycle) - gap
+            tree.position = CGPoint(x: x, y: roadY(x + tree.size.width / 2, size.height * (0.57 - depth * 0.025)))
         }
-        let count = roadDashes.count / 2
-        if count > 0 {
-            let phase = roadDistance.truncatingRemainder(dividingBy: 72)
-            for (index, dash) in roadDashes.enumerated() {
-                dash.position.x = CGFloat(index % count) * 72 - phase + 17
+        for (lane, dashes) in roadDashes.enumerated() {
+            let stride = CGFloat(60 + lane * 22)
+            let shift = (roadDistance * (0.75 + CGFloat(lane) * 0.24)).truncatingRemainder(dividingBy: stride)
+            let level = (laneY(lane) + laneY(lane + 1)) / 2
+            for (index, dash) in dashes.enumerated() {
+                let x = CGFloat(index) * stride - shift
+                let end = x + stride * (0.48 - 0.14 * x / max(1, size.width))
+                dash.path = roadLine(from: x, to: end, level: level)
             }
         }
         let phase = roadTime.truncatingRemainder(dividingBy: 56) / 56
         let night = min(1, max(0, (0.5 - 0.5 * cos(2 * .pi * phase) - 0.20) / 0.60))
         roadShade.alpha = CGFloat(night) * 0.76
-        headlight.isHidden = visualTier == 0 || night <= 0
+        headlight.isHidden = night <= 0
         let beam = CGMutablePath()
         beam.move(to: CGPoint(x: 29, y: 0))
         beam.addLine(to: CGPoint(x: 140, y: -22))
@@ -657,6 +771,7 @@ private final class PrimeArcadeScene: SKScene {
     private func configureVehicle(_ tier: Int) {
         let texture = vehicleTextures[tier]
         vehicleSprite.texture = texture
+        vehicleSprite.setScale(flight ? 1 + CGFloat(parts) * 0.012 : 1)
         vehicleSprite.isHidden = texture == nil
         player.fillColor = texture == nil ? .systemTeal : .clear
         player.strokeColor = texture == nil ? .white : .clear
@@ -667,7 +782,7 @@ private final class PrimeArcadeScene: SKScene {
         let w = source.width * scale, h = source.height * scale
         vehicleSprite.size = CGSize(width: w, height: h)
         vehicleSprite.position = .zero
-        let positions: [(CGFloat, CGFloat, CGFloat)] = [(0.18, 0.77, 0.34), (0.23, 0.81, 0.33), (0.18, 0.77, 0.30)]
+        let positions: [(CGFloat, CGFloat, CGFloat)] = [(0.23, 0.81, 0.33), (0.18, 0.77, 0.30), (0.18, 0.77, 0.30)]
         for (idx, wheel) in wheelMarks.enumerated() {
             wheel.isHidden = mode == .shooter
             let (left, right, y) = positions[tier]
@@ -691,7 +806,7 @@ private final class PrimeArcadeScene: SKScene {
         for (index, puff) in exhaust.enumerated() {
             let life = ((mode == .runner ? roadTime : time) * 2.2 + Double(index) / 6).truncatingRemainder(dividingBy: 1)
             let p = CGFloat(life)
-            puff.isHidden = mode == .runner && visualTier == 0
+            puff.isHidden = false
             puff.position = mode == .runner
                 ? CGPoint(x: player.position.x - 37 - p * 40, y: player.position.y - 8 + p * 14)
                 : CGPoint(x: player.position.x + CGFloat(index % 3 - 1) * p * 11,
@@ -729,6 +844,7 @@ private final class PrimeArcadeScene: SKScene {
         if passed {
             let next = flight ? min(Self.bonusStage, stage + 1) : stage + 1
             defaults.set(max(unlockedStage, next), forKey: mode.storageKey + (flight ? "_campaign_unlocked" : "_timed_unlocked"))
+            if flight && next > stage { storeKit(for: next) }
         }
         running = false
         firing = false
@@ -818,14 +934,19 @@ private final class PrimeArcadeScene: SKScene {
         if shotDelay <= 0 {
             let offset = CGFloat(arcadeRules.shot_offset)
             let velocity = flight ? CGVector(dx: 0, dy: CGFloat(arcadeRules.shot_speed)) : CGVector(dx: 490, dy: 0)
-            let start = CGPoint(x: player.position.x + (flight ? 0 : 33), y: player.position.y + (flight ? offset : 0))
+            let startX = player.position.x + (flight ? 0 : 33)
+            let startY = flight ? player.position.y + offset
+                : roadY(startX, roadY(player.position.x, player.position.y, inverse: true))
+            let start = CGPoint(x: startX, y: startY)
             launch(at: start, velocity: velocity, hostile: false)
-            shotDelay = flight ? Double(arcadeRules.shot_cooldown_ms) / 1000 : 0.24
+            pendingShot = false
+            shotDelay = flight ? Double(max(105, Int(arcadeRules.shot_cooldown_ms) - 6 * weapon)) / 1000 : 0.24
         }
     }
 
     private func launch(at center: CGPoint, velocity: CGVector, hostile: Bool, number: Int = 4) {
         let shot = PrimeArcadeBolt(at: center, velocity: velocity, hostile: hostile, number: number)
+        if !flight { shot.roadLevel = roadY(center.x, center.y, inverse: true) }
         field.addChild(shot)
         shots.append(shot)
     }
@@ -842,6 +963,14 @@ private final class PrimeArcadeScene: SKScene {
         exitStartTime = nil
         player.isHidden = false
         lives = Int(arcadeRules.lives)
+        if flight {
+            let loadout = kit(for: stage)
+            parts = loadout[0]
+            weapon = loadout[1]
+            lives = loadout[2]
+        }
+        destroyed = 0
+        escortPrepared = false
         ended = false
         pieces.forEach { $0.removeFromParent() }
         shots.forEach { $0.removeFromParent() }
@@ -850,6 +979,7 @@ private final class PrimeArcadeScene: SKScene {
         spawnIn = Double(arcadeRules.spawn_start_ms) / 1000
         previousNumber = 0
         bossHealth = -1
+        bossStarted = 0
         bossNode.isHidden = true
         wave = 0
         charge = 0
@@ -862,6 +992,7 @@ private final class PrimeArcadeScene: SKScene {
         sinceSave = 0
         shotDelay = 0
         shieldTime = 0
+        shieldFlashUntil = 0
         hitGrace = 0
         shieldRing.isHidden = true
         pulse.removeAllActions()
@@ -881,7 +1012,7 @@ private final class PrimeArcadeScene: SKScene {
         lastFrame = nil
         field.isPaused = true
         steeringTouches.removeAll()
-        twoFingerOrigin = nil
+        pendingShot = false
         lastTouchCenter = nil
         firing = false
         saveProgress()
@@ -891,7 +1022,7 @@ private final class PrimeArcadeScene: SKScene {
     private func positionPlayer() {
         player.removeAllActions()
         movePlayer(to: CGPoint(x: mode == .runner ? size.width * 0.30 : size.width / 2,
-                               y: mode == .runner ? laneY(1) : CGFloat(arcadeRules.ship_y)))
+                               y: mode == .runner ? roadY(size.width * 0.30, laneY(1)) : CGFloat(arcadeRules.ship_y)))
         previousRoadPosition = player.position
     }
 
@@ -902,21 +1033,23 @@ private final class PrimeArcadeScene: SKScene {
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard finishedPhase == nil else { return }
         beginIfNeeded()
+        let previousCount = steeringTouches.count
         steeringTouches.formUnion(touches)
         rebaseSteering()
+        if flight && previousCount < 2 && firing {
+            pendingShot = true
+            shoot()
+            playEffect("ppf_pm_tap")
+        }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard running, let center = steeringCenter(), let previous = lastTouchCenter else { return }
-        movePlayer(to: CGPoint(x: player.position.x + center.x - previous.x,
-                               y: player.position.y + center.y - previous.y))
+        let targetX = player.position.x + center.x - previous.x
+        let targetY = flight ? player.position.y + center.y - previous.y
+            : roadY(targetX, roadY(player.position.x, player.position.y, inverse: true) + center.y - previous.y)
+        movePlayer(to: CGPoint(x: targetX, y: targetY))
         lastTouchCenter = center
-        if !firing, steeringTouches.count == 2, let origin = twoFingerOrigin,
-           hypot(center.x - origin.x, center.y - origin.y) >= 4 {
-            firing = true
-            shoot()
-            playEffect("ppf_pm_tap")
-        }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -924,6 +1057,7 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        pendingShot = false
         endSteering(touches)
     }
 
@@ -933,13 +1067,16 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     private func rebaseSteering() {
+        if flight, pilotTouch.map({ steeringTouches.contains($0) }) != true {
+            pilotTouch = steeringTouches.min(by: { $0.timestamp < $1.timestamp })
+        }
         lastTouchCenter = steeringCenter()
-        firing = false
-        twoFingerOrigin = steeringTouches.count == 2 ? lastTouchCenter : nil
+        firing = steeringTouches.count == 2
     }
 
     private func steeringCenter() -> CGPoint? {
         guard !steeringTouches.isEmpty else { return nil }
+        if flight { return pilotTouch?.location(in: self) }
         let total = steeringTouches.reduce(CGPoint.zero) { sum, touch in
             let point = touch.location(in: self)
             return CGPoint(x: sum.x + point.x, y: sum.y + point.y)
@@ -966,8 +1103,10 @@ private final class PrimeArcadeScene: SKScene {
             maxY = size.height - max(top, bossLimit)
             minY = min(maxY, CGFloat(arcadeRules.control_height) + 36)
         }
-        player.position = CGPoint(x: min(maxX, max(minX, target.x)),
-                                  y: min(maxY, max(minY, target.y)))
+        let x = min(maxX, max(minX, target.x))
+        let level = flight ? target.y : roadY(target.x, target.y, inverse: true)
+        let y = min(maxY, max(minY, level))
+        player.position = CGPoint(x: x, y: flight ? y : roadY(x, y))
         shieldRing.position = player.position
     }
 
@@ -990,7 +1129,10 @@ private final class PrimeArcadeScene: SKScene {
         hitGrace = max(0, hitGrace - delta)
         shieldRing.position = player.position
         shieldRing.isHidden = shieldTime <= 0
-        if firing && steeringTouches.count == 2 { shoot() }
+        let shieldFlashing = combatClock < shieldFlashUntil
+        shieldRing.strokeColor = shieldFlashing ? .white : .cyan
+        shieldRing.glowWidth = shieldFlashing ? 10 : 5
+        if firing || pendingShot { shoot() }
         if spawnIn <= 0 && (!flight || bossHealth < 0) { spawn() }
         animateVehicle(currentTime)
 
@@ -1021,6 +1163,7 @@ private final class PrimeArcadeScene: SKScene {
                 if near(shot.position, player.position, x: 25, y: 12) {
                     shot.removeFromParent()
                     roadBurst(at: player.position, prime: false)
+                    showPulse("Impacto: projétil composto")
                     playEffect("ppf_pm_composite")
                     _ = completePhaseIfNeeded(crashed: true)
                     return
@@ -1042,18 +1185,22 @@ private final class PrimeArcadeScene: SKScene {
             let travel = distance * (armed ? 1.23 : 1)
             piece.position.x -= travel
             if armed {
-                let desired = player.position.y + CGFloat(sin(combatClock / 0.46)) * 17
+                let desired = roadY(player.position.x, player.position.y, inverse: true) + CGFloat(sin(combatClock / 0.46)) * 17
                 let step = CGFloat(delta) * 44
-                piece.position.y = min(laneY(0), max(laneY(2), piece.position.y + min(step, max(-step, desired - piece.position.y))))
-                if combatClock >= piece.nextAttack, piece.position.x < size.width - 8, piece.position.x > player.position.x + 82 {
-                    launch(at: CGPoint(x: piece.position.x - 22, y: piece.position.y),
-                           velocity: CGVector(dx: -375, dy: 0), hostile: true, number: piece.number)
+                piece.roadLevel = min(laneY(0), max(laneY(2), piece.roadLevel + min(step, max(-step, desired - piece.roadLevel))))
+                if combatClock >= piece.nextAttack, piece.position.x < size.width - 8,
+                   piece.position.x > player.position.x + max(108, size.width * 0.27) {
+                    let x = piece.position.x - 23
+                    launch(at: CGPoint(x: x, y: roadY(x, piece.roadLevel)),
+                           velocity: CGVector(dx: -310, dy: 0), hostile: true, number: piece.number)
                     piece.nextAttack = combatClock + 1.65
                 }
             }
-            if ppf_arcade_road_hit(Double(previousRoadPosition.x - travel), Double(previousRoadPosition.y),
-                                   Double(player.position.x), Double(player.position.y),
-                                   Double(piece.position.x), Double(piece.position.y), Double(size.height)) {
+            piece.position.y = roadY(piece.position.x, piece.roadLevel)
+            if ppf_arcade_road_hit(Double(previousRoadPosition.x - travel),
+                                   Double(roadY(previousRoadPosition.x, previousRoadPosition.y, inverse: true)),
+                                   Double(player.position.x), Double(roadY(player.position.x, player.position.y, inverse: true)),
+                                   Double(piece.position.x), Double(piece.roadLevel), Double(size.height)) {
                 roadBurst(at: piece.position, prime: piece.isPrime)
                 piece.removeFromParent()
                 if piece.isPrime {
@@ -1108,19 +1255,37 @@ private final class PrimeArcadeScene: SKScene {
     private func updateFlight(_ delta: TimeInterval) {
         let margin = CGFloat(arcadeRules.spawn_margin)
         if bossHealth > 0 { updateBoss() }
+        collectBeforeShots(delta)
         for shot in shots.reversed() where shot.parent != nil {
             if !advance(shot, delta: delta) { continue }
             if shot.hostile {
-                if near(shot.position, player.position, x: 24, y: 26) {
+                let dx = Double(shot.position.x - player.position.x)
+                let dy = Double(shot.position.y - player.position.y)
+                if shieldTime > 0 && ppf_arcade_shield_intercepts(dx, dy) {
+                    shot.removeFromParent()
+                    shieldFlashUntil = combatClock + 0.2
+                    showPulse("Tiro bloqueado")
+                    playEffect("ppf_pm_power")
+                } else if near(shot.position, player.position, x: 24, y: 26) {
                     shot.removeFromParent()
                     takeFlightHit()
                     if lives <= 0 { return }
                 }
                 continue
             }
-            if bossHealth > 0 && near(shot.position, bossNode.position, x: 53, y: 34) {
+            if let escort = pieces.first(where: {
+                $0.parent != nil && $0.escortOffset != nil && near(shot.position, $0.position, x: 25, y: 25)
+            }) {
                 shot.removeFromParent()
-                bossHealth = max(0, bossHealth - ppf_arcade_boss_damage(charge))
+                destroy(escort)
+                continue
+            }
+            if bossHealth > 0 && near(shot.position, bossNode.position, x: 53 * bossScale, y: 34 * bossScale) {
+                shot.removeFromParent()
+                if bossGuarded || abs(shot.position.x - bossNode.position.x) >= 22 * bossScale { continue }
+                let previousHealth = bossHealth
+                bossHealth = max(0, bossHealth - ppf_arcade_upgrade_damage(charge, Int32(weapon)))
+                dropBossLoot(afterHitFrom: previousHealth)
                 if bossHealth == 0 {
                     roadBurst(at: bossNode.position, prime: true, scale: 2.1)
                     playEffect("ppf_pm_composite")
@@ -1132,20 +1297,16 @@ private final class PrimeArcadeScene: SKScene {
                 continue
             }
             if let hit = pieces.reversed().first(where: { piece in
-                piece.parent != nil && piece.role != Int32(PPF_ARCADE_REPAIR) && collides(Int32(PPF_ARCADE_SHOT), shot.position,
+                piece.parent != nil && piece.loot == 0 && piece.escortOffset == nil &&
+                    collides(Int32(PPF_ARCADE_SHOT), shot.position,
                     with: spaceBox(for: piece), piece.position)
             }) {
-                hit.removeFromParent()
                 shot.removeFromParent()
-                if hit.isPrime {
-                    showPulse("Primo perdido")
-                } else {
-                    showPoints("Composto \(hit.number)", ppf_arcade_points(Int32(hit.number), false, false))
-                    playEffect("ppf_pm_combo")
-                }
+                destroy(hit)
             }
         }
         for piece in pieces.reversed() where piece.parent != nil {
+            if piece.escortOffset != nil { continue }
             piece.position.y -= CGFloat(delta) * piece.travelSpeed
             if piece.role == Int32(PPF_ARCADE_ARMED) && combatClock >= piece.nextAttack
                 && piece.position.y < size.height - 55 && piece.position.y > player.position.y + 84 {
@@ -1157,25 +1318,94 @@ private final class PrimeArcadeScene: SKScene {
                 piece.removeFromParent()
                 continue
             }
-            guard collides(Int32(PPF_ARCADE_SHIP), player.position, with: spaceBox(for: piece), piece.position) else {
+            guard !piece.isPrime, piece.loot == 0,
+                  collides(Int32(PPF_ARCADE_SHIP), player.position, with: spaceBox(for: piece), piece.position) else {
                 continue
             }
             piece.removeFromParent()
-            if piece.role == Int32(PPF_ARCADE_REPAIR) {
-                lives = min(5, lives + 1)
-                showPulse("Reparo  ·  \(lives) vidas")
-                playEffect("ppf_pm_power")
-            } else if piece.isPrime {
+            takeFlightHit()
+            if lives <= 0 { return }
+        }
+    }
+
+    private func collectBeforeShots(_ delta: TimeInterval) {
+        for piece in pieces.reversed() where piece.parent != nil && (piece.isPrime || piece.loot > 0) {
+            let next = CGPoint(x: piece.position.x, y: piece.position.y - CGFloat(delta) * piece.travelSpeed)
+            guard collides(Int32(PPF_ARCADE_SHIP), player.position, with: spaceBox(for: piece), next) else { continue }
+            piece.removeFromParent()
+            if piece.loot > 0 {
+                collect(piece.loot)
+            } else {
                 showPoints("Resgate \(piece.number)", ppf_arcade_points(Int32(piece.number), true, true))
                 charge = ppf_arcade_add_charge(charge, Int32(piece.number))
-                shieldTime = Double(arcadeRules.shield_ms) / 1000
+                shieldTime = max(shieldTime, Double(arcadeRules.shield_ms) / 1000)
                 shieldRing.isHidden = false
                 playEffect("ppf_pm_prime")
-            } else {
-                takeFlightHit()
-                if lives <= 0 { return }
             }
         }
+    }
+
+    private func kit(for level: Int) -> [Int] {
+        let stored = defaults.array(forKey: mode.storageKey + "_kit_\(level)") as? [Int] ?? []
+        return stored.count == 3 ? stored : [0, 0, Int(arcadeRules.lives)]
+    }
+
+    private func storeKit(for level: Int) {
+        let previous = kit(for: level)
+        let bestParts = max(previous[0], parts)
+        let bestLives = defaults.object(forKey: mode.storageKey + "_kit_\(level)") == nil ? lives : max(previous[2], lives)
+        defaults.set([bestParts, max(previous[1], weapon), min(Int(ppf_arcade_max_lives(Int32(bestParts))), bestLives)],
+                     forKey: mode.storageKey + "_kit_\(level)")
+    }
+
+    private func destroy(_ piece: PrimeArcadePiece) {
+        piece.removeFromParent()
+        if piece.isPrime { showPulse("Primo perdido"); return }
+        showPoints("Composto \(piece.number)", ppf_arcade_points(Int32(piece.number), false, false))
+        playEffect("ppf_pm_combo")
+        roadBurst(at: piece.position, prime: false)
+        destroyed += 1
+        let kind = ppf_arcade_flight_loot(Int32(stage), Int32(clamping: destroyed))
+        guard kind != 0 else { return }
+        spawnLoot(kind, at: piece.position, speed: 82)
+    }
+
+    private func spawnLoot(_ kind: Int32, at point: CGPoint, speed: CGFloat) {
+        let pickup = PrimeArcadePiece(number: 0, prime: false, flight: true, travelSpeed: speed, role: 0)
+        pickup.markLoot(kind)
+        pickup.position = point
+        pieces.append(pickup)
+        field.addChild(pickup)
+    }
+
+    private func dropBossLoot(afterHitFrom before: Int32) {
+        let drops = ppf_arcade_boss_drops(before, bossHealth, bossData.health)
+        for mark in 0..<3 where (drops & (1 << mark)) != 0 {
+            let kind = mark == 1 ? Int32(PPF_ARCADE_LOOT_LIFE) : Int32(PPF_ARCADE_LOOT_SHIELD)
+            let x = bossNode.position.x + CGFloat(mark - 1) * 32
+            let point = CGPoint(x: max(22, min(size.width - 22, x)), y: bossNode.position.y - 52 * bossScale)
+            spawnLoot(kind, at: point, speed: 112)
+        }
+    }
+
+    private func collect(_ kind: Int32) {
+        if kind == Int32(PPF_ARCADE_LOOT_SHIELD) {
+            shieldTime = max(shieldTime, Double(PPF_ARCADE_PICKUP_SHIELD_MS) / 1000)
+            shieldRing.isHidden = false
+            showPulse("Escudo reforçado")
+        } else if kind == Int32(PPF_ARCADE_LOOT_LIFE) {
+            lives = min(Int(ppf_arcade_max_lives(Int32(parts))), lives + 1)
+            showPulse("Vidas: \(lives)")
+        } else if kind == Int32(PPF_ARCADE_LOOT_PART) {
+            parts = min(12, parts + 1)
+            vehicleSprite.setScale(1 + CGFloat(parts) * 0.012)
+            showPulse("Peças: \(parts)")
+        } else {
+            weapon = min(12, weapon + 1)
+            showPulse("Arma: nível \(weapon)")
+        }
+        playEffect("ppf_pm_power")
+        saveProgress()
     }
 
     private func near(_ a: CGPoint, _ b: CGPoint, x: CGFloat, y: CGFloat) -> Bool {
@@ -1184,7 +1414,8 @@ private final class PrimeArcadeScene: SKScene {
 
     private func advance(_ shot: PrimeArcadeBolt, delta: TimeInterval) -> Bool {
         shot.position.x += CGFloat(delta) * shot.velocity.dx
-        shot.position.y += CGFloat(delta) * shot.velocity.dy
+        if flight { shot.position.y += CGFloat(delta) * shot.velocity.dy }
+        else { shot.position.y = roadY(shot.position.x, shot.roadLevel) }
         if shot.position.x < -36 || shot.position.x > size.width + 36 ||
             shot.position.y < -36 || shot.position.y > size.height + 36 {
             shot.removeFromParent()
@@ -1211,14 +1442,23 @@ private final class PrimeArcadeScene: SKScene {
     private func positionBoss() {
         guard bossHealth > 0 else { return }
         bossNode.isHidden = false
-        bossNode.position = CGPoint(x: size.width * CGFloat(0.50 + 0.27 * sin(combatClock / 1.32)),
+        bossNode.setScale(bossScale)
+        let edge = min(size.width / 2, 57 * bossScale)
+        let orbit = size.width * CGFloat(0.50 + 0.27 * sin(combatClock / 1.32))
+        bossNode.position = CGPoint(x: min(size.width - edge, max(edge, orbit)),
                                     y: size.height - min(size.height * 0.30, 145))
         bossBar.xScale = CGFloat(bossHealth) / CGFloat(bossData.health)
-        bossAura.alpha = nextBossWave - combatClock < 0.32 ? 1 : 0.45
+        let guarded = bossGuarded
+        bossCore.isHidden = guarded
+        bossBar.color = guarded ? .cyan : .systemOrange
+        bossAura.strokeColor = guarded ? .cyan : .systemOrange
+        bossAura.fillColor = (guarded ? SKColor.cyan : SKColor.systemRed).withAlphaComponent(0.24)
+        bossAura.alpha = guarded || nextBossWave - combatClock < 0.32 ? 1 : 0.45
     }
 
     private func startBoss() {
         bossHealth = bossData.health
+        bossStarted = combatClock
         nextBossWave = combatClock + 1.45
         pieces.forEach { $0.removeFromParent() }
         shots.forEach { $0.removeFromParent() }
@@ -1232,6 +1472,38 @@ private final class PrimeArcadeScene: SKScene {
 
     private func updateBoss() {
         positionBoss()
+        if !escortPrepared {
+            escortPrepared = true
+            let count = Int(ppf_arcade_boss_escorts(Int32(stage)))
+            for i in 0..<count {
+                let escort = PrimeArcadePiece(number: 4 + i * 2, prime: false, flight: true,
+                                             travelSpeed: 0, role: Int32(PPF_ARCADE_ARMED))
+                escort.escortOffset = CGFloat(i) - CGFloat(count - 1) / 2
+                if let texture = vehicleTextures[2] {
+                    let ship = SKSpriteNode(texture: texture)
+                    ship.size = CGSize(width: 66, height: 45)
+                    ship.zRotation = .pi
+                    ship.zPosition = -1
+                    escort.addChild(ship)
+                }
+                escort.setScale(0.78)
+                escort.zPosition = 2
+                escort.nextAttack = combatClock + 1.6 + Double(i) * 0.38
+                pieces.append(escort)
+                field.addChild(escort)
+            }
+        }
+        for escort in pieces where escort.parent != nil {
+            guard let offset = escort.escortOffset else { continue }
+            escort.position.x = max(19, min(size.width - 19, bossNode.position.x + offset * 54 +
+                CGFloat(sin(combatClock * 2.3 + Double(offset))) * 22))
+            escort.position.y = bossNode.position.y - 52 * bossScale - 15 - abs(offset) * 8
+            if combatClock >= escort.nextAttack {
+                let aim = max(-110, min(110, (player.position.x - escort.position.x) * 0.7))
+                launch(at: escort.position, velocity: CGVector(dx: aim, dy: -245), hostile: true, number: escort.number)
+                escort.nextAttack = combatClock + max(1.15, 2.25 - Double(stage) * 0.018)
+            }
+        }
         guard combatClock >= nextBossWave else { return }
         let speed = CGFloat(230 + min(stage, 45) * 2)
         let compound = [4, 6, 8, 9, 10, 12][wave % 6]
@@ -1241,7 +1513,8 @@ private final class PrimeArcadeScene: SKScene {
                        velocity: CGVector(dx: 0, dy: -speed), hostile: true, number: compound)
             }
         } else {
-            let aim = bossData.pattern == 2 ? max(-135, min(135, (player.position.x - bossNode.position.x) * 1.2)) : 0
+            let aim = bossData.pattern == 2 || wave % 2 == 1
+                ? max(-135, min(135, (player.position.x - bossNode.position.x) * 1.2)) : 0
             for tile in -1...1 {
                 launch(at: CGPoint(x: bossNode.position.x, y: bossNode.position.y - 22),
                        velocity: CGVector(dx: aim + CGFloat(tile) * 88, dy: -speed), hostile: true, number: compound)
@@ -1273,7 +1546,8 @@ private final class PrimeArcadeScene: SKScene {
             let x = margin + (size.width - 2 * margin) * CGFloat(draw.lane) / CGFloat(PPF_ARCADE_LANE_MAX)
             piece.position = CGPoint(x: x, y: size.height + CGFloat(arcadeRules.spawn_margin))
         } else {
-            piece.position = CGPoint(x: size.width + 34, y: laneY(Int(draw.lane)))
+            piece.roadLevel = laneY(Int(draw.lane))
+            piece.position = CGPoint(x: size.width + 34, y: roadY(size.width + 34, piece.roadLevel))
             let radius = min(21, size.height * 0.049)
             piece.path = CGPath(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
             if role == Int32(PPF_ARCADE_ARMED), let texture = vehicleTextures[2] {
@@ -1301,8 +1575,9 @@ private final class PrimeArcadeScene: SKScene {
         } else {
             let shield = shieldTime > 0 ? " · Escudo" : ""
             hud.text = "Pontos \(points)   •   Vidas \(lives)   •   Setor \(stage + 1)"
-            let objective = bossHealth >= 0 ? bossName : "Chefe em \(remaining) s"
-            goalHUD.text = "\(objective)  ·  Carga \(charge)%\(shield)"
+            let zone = Int(ppf_arcade_flight_zone(Int32(stage), zoneBlend >= 0.5))
+            let objective = bossHealth >= 0 ? bossName + (bossGuarded ? " · Blindado" : "") : Self.zoneNames[zone]
+            goalHUD.text = "\(objective) · Carga \(charge)% · Arma \(weapon)\(shield)"
         }
     }
 
@@ -1320,6 +1595,9 @@ private final class PrimeArcadeScene: SKScene {
             defaults.set(Int((phaseElapsed * 1000).rounded()), forKey: mode.storageKey + "_timed_elapsed")
             defaults.set(Int(charge), forKey: mode.storageKey + "_campaign_charge")
             defaults.set(Int(bossHealth), forKey: mode.storageKey + "_campaign_boss_hp")
+            defaults.set(parts, forKey: mode.storageKey + "_parts")
+            defaults.set(weapon, forKey: mode.storageKey + "_weapon")
+            defaults.set(destroyed, forKey: mode.storageKey + "_destroyed")
         }
     }
 }

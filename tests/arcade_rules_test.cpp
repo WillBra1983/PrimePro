@@ -87,7 +87,7 @@ int main() {
             assert(ppf_arcade_enemy_role(false, false, stage, seed) != PPF_ARCADE_REPAIR);
         }
     }
-    assert(ppf_arcade_enemy_role(false, true, 0, 0) == PPF_ARCADE_REPAIR);
+    assert(ppf_arcade_enemy_role(false, true, 0, 0) == PPF_ARCADE_ARMED);
     assert(ppf_arcade_enemy_role(false, true, 0, 1) == PPF_ARCADE_ARMED);
     assert(ppf_arcade_enemy_role(false, false, 0, 99) == PPF_ARCADE_REGULAR);
     assert(ppf_arcade_add_charge(0, 2) == 1 && ppf_arcade_add_charge(0, 67) == 16);
@@ -97,6 +97,39 @@ int main() {
     assert(ppf_arcade_flight_outcome(1, 1) == PPF_ARCADE_PHASE_RUNNING);
     assert(ppf_arcade_flight_outcome(1, 0) == PPF_ARCADE_PHASE_PASSED);
     assert(ppf_arcade_flight_outcome(0, 0) == PPF_ARCADE_PHASE_CRASHED);
+    assert(ppf_arcade_flight_duration_ms(0) == 50000);
+    assert(ppf_arcade_flight_duration_ms(51) == 131600);
+    assert(ppf_arcade_boss_scale_percent(0) == 100);
+    assert(ppf_arcade_boss_scale_percent(50) == 165);
+    assert(ppf_arcade_boss_escorts(0) == 0 && ppf_arcade_boss_escorts(1) == 1);
+    assert(ppf_arcade_boss_escorts(50) == 3);
+    assert(ppf_arcade_flight_loot(0, 0) == PPF_ARCADE_LOOT_NONE);
+    assert(ppf_arcade_flight_loot(0, 2) == PPF_ARCADE_LOOT_LIFE);
+    assert(ppf_arcade_flight_loot(0, 4) == PPF_ARCADE_LOOT_PART);
+    assert(ppf_arcade_flight_loot(0, 5) == PPF_ARCADE_LOOT_WEAPON);
+    assert(ppf_arcade_flight_loot(12, 9) == PPF_ARCADE_LOOT_LIFE);
+    assert(ppf_arcade_upgrade_damage(100, 12) == 40);
+    assert(ppf_arcade_max_lives(0) == 5 && ppf_arcade_max_lives(12) == 9);
+    assert(ppf_arcade_boss(0).health == 175);
+    const int window = ppf_arcade_boss_guard_window_ms(0);
+    const int cycle = ppf_arcade_boss_guard_cycle_ms(0);
+    assert(ppf_arcade_boss_guarded(0, 0, false));
+    assert(!ppf_arcade_boss_guarded(0, window, false));
+    assert(ppf_arcade_boss_guarded(0, window, true));
+    assert(ppf_arcade_boss_guarded(0, cycle, false));
+    assert(ppf_arcade_flight_zone(0, false) != ppf_arcade_flight_zone(0, true));
+    assert(ppf_arcade_flight_zone(50, false) == 4 && ppf_arcade_flight_zone(50, true) == 4);
+    assert(ppf_arcade_flight_zone(51, false) != ppf_arcade_flight_zone(51, true));
+    assert(ppf_arcade_shield_intercepts(45, 0));
+    assert(ppf_arcade_shield_intercepts(0, PPF_ARCADE_SHIELD_INTERCEPT));
+    assert(!ppf_arcade_shield_intercepts(45, 45));
+    assert(!ppf_arcade_shield_intercepts(0, 55));
+    assert(ppf_arcade_boss_drops(76, 75, 100) == 1);
+    assert(ppf_arcade_boss_drops(75, 51, 100) == 0);
+    assert(ppf_arcade_boss_drops(52, 48, 100) == 2);
+    assert(ppf_arcade_boss_drops(28, 20, 100) == 4);
+    assert(ppf_arcade_boss_drops(78, 24, 100) == 7);
+    assert(ppf_arcade_boss_drops(26, 0, 100) == 0);
 
     for (const bool flight : {false, true}) {
         int previous = 0;
