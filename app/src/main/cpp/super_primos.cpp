@@ -22,6 +22,88 @@ Java_com_primeprofast_app_MainActivity_arcadeStage(JNIEnv*, jclass, jint score, 
 }
 
 extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadePhaseTarget(JNIEnv*, jclass, jint stage, jboolean flight) {
+    return ppf_arcade_phase_target(stage, flight != JNI_FALSE);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadePhaseDuration(JNIEnv*, jclass, jboolean flight) {
+    return ppf_arcade_phase_duration_ms(flight != JNI_FALSE);
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeBossNativo(JNIEnv* env, jclass, jint stage) {
+    auto b = ppf_arcade_boss(stage);
+    const jint data[] = {b.exponent, b.prefix, b.health, b.pattern};
+    auto result = env->NewIntArray(4);
+    if (result) env->SetIntArrayRegion(result, 0, 4, data);
+    return result;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeEnemyRoleNativo(JNIEnv*, jclass, jboolean prime,
+    jboolean flight, jint stage, jint seed) {
+    return ppf_arcade_enemy_role(prime, flight, stage, static_cast<uint32_t>(seed));
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeAddChargeNativo(JNIEnv*, jclass, jint charge, jint prime) {
+    return ppf_arcade_add_charge(charge, prime);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeBossDamageNativo(JNIEnv*, jclass, jint charge) {
+    return ppf_arcade_boss_damage(charge);
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeFlightStageNativo(JNIEnv* env, jclass, jint stage) {
+    const jint data[] = {ppf_arcade_flight_duration_ms(stage), ppf_arcade_boss_scale_percent(stage),
+                         ppf_arcade_boss_escorts(stage), ppf_arcade_boss_guard_cycle_ms(stage),
+                         ppf_arcade_boss_guard_window_ms(stage), ppf_arcade_flight_zone(stage, false),
+                         ppf_arcade_flight_zone(stage, true)};
+    jintArray result = env->NewIntArray(7);
+    if (result != nullptr) env->SetIntArrayRegion(result, 0, 7, data);
+    return result;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeFlightLootNativo(JNIEnv*, jclass, jint stage, jint destroyed) {
+    return ppf_arcade_flight_loot(stage, destroyed);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeBossDropsNativo(JNIEnv*, jclass, jint before, jint after, jint maximum) {
+    return ppf_arcade_boss_drops(before, after, maximum);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeShieldInterceptsNativo(JNIEnv*, jclass, jdouble dx, jdouble dy) {
+    return ppf_arcade_shield_intercepts(dx, dy) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeUpgradeDamageNativo(JNIEnv*, jclass, jint charge, jint weapon) {
+    return ppf_arcade_upgrade_damage(charge, weapon);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeMaxLivesNativo(JNIEnv*, jclass, jint parts) {
+    return ppf_arcade_max_lives(parts);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeFlightOutcomeNativo(JNIEnv*, jclass, jint lives, jint hp) {
+    return ppf_arcade_flight_outcome(lives, hp);
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_primeprofast_app_MainActivity_arcadePhaseOutcome(JNIEnv*, jclass, jint stage, jboolean flight,
+    jint elapsed, jint points, jboolean crashed) {
+    return ppf_arcade_phase_outcome(stage, flight != JNI_FALSE, elapsed, points, crashed != JNI_FALSE);
+}
+
+extern "C" JNIEXPORT jint JNICALL
 Java_com_primeprofast_app_MainActivity_arcadeVehicle(JNIEnv*, jclass, jint stage) {
     return ppf_arcade_vehicle(stage);
 }
@@ -56,6 +138,12 @@ Java_com_primeprofast_app_MainActivity_arcadeSpawnNativo(
 extern "C" JNIEXPORT jdouble JNICALL
 Java_com_primeprofast_app_MainActivity_arcadeRunnerSpeedNativo(JNIEnv*, jclass, jint score) {
     return ppf_arcade_runner_speed(score);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeRoadHitNativo(JNIEnv*, jclass, jdouble previousX,
+    jdouble previousY, jdouble x, jdouble y, jdouble targetX, jdouble targetY, jdouble height) {
+    return ppf_arcade_road_hit(previousX, previousY, x, y, targetX, targetY, height);
 }
 
 extern "C" JNIEXPORT jdouble JNICALL

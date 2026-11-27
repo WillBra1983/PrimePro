@@ -1,43 +1,43 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.primeprofast.app'
-    compileSdkVersion 36
-    ndkVersion "29.0.13113456"
+    namespace = 'com.primeprofast.app'
+    compileSdk = 36
+    ndkVersion = "29.0.13113456"
 
     sourceSets.main.assets.srcDir rootProject.file('shared')
     
     // Habilitar BuildConfig para campos customizados
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
     defaultConfig {
-        applicationId "com.primeprofast.app"
-        minSdkVersion 24
-        targetSdkVersion 36
-        versionCode 11
-        versionName "1.0.6"
+        applicationId = "com.primeprofast.app"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 11
+        versionName = "1.0.6"
         externalNativeBuild {
             cmake {
-                cppFlags "-O3 -ffast-math -funroll-loops -DNDEBUG -fomit-frame-pointer"
+                cppFlags.addAll(['-O3', '-ffast-math', '-funroll-loops', '-DNDEBUG', '-fomit-frame-pointer'])
             }
         }
         ndk {
-            abiFilters "arm64-v8a"
+            abiFilters.add('arm64-v8a')
         }
     }
-    packagingOptions {
+    packaging {
         jniLibs {
-            // AGP 8.1 needs compressed JNI libraries for 16 KB devices.
-            useLegacyPackaging true
+            // Preserve the native-library packaging used in the validated release.
+            useLegacyPackaging = true
         }
     }
     signingConfigs {
         debug {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+            storeFile = file('debug.keystore')
+            storePassword = 'android'
+            keyAlias = 'androiddebugkey'
+            keyPassword = 'android'
         }
         release {
             // Carregar configurações do keystore de produção
@@ -45,55 +45,53 @@ android {
             def keystoreProperties = new Properties()
             if (keystorePropertiesFile.exists()) {
                 keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-                storeFile file(keystoreProperties['storeFile'])
-                storePassword keystoreProperties['storePassword']
-                keyAlias keystoreProperties['keyAlias']
-                keyPassword keystoreProperties['keyPassword']
+                storeFile = file(keystoreProperties['storeFile'])
+                storePassword = keystoreProperties['storePassword']
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
             } else {
                 // Fallback para debug se keystore.properties não existir
-                storeFile file('debug.keystore')
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
+                storeFile = file('debug.keystore')
+                storePassword = 'android'
+                keyAlias = 'androiddebugkey'
+                keyPassword = 'android'
             }
         }
     }
     
     buildTypes {
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
         }
         release {
-            minifyEnabled true
-            shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro')
+            signingConfig = signingConfigs.release
             
             // Configurações de segurança
-            buildConfigField "boolean", "DEBUG_MODE", "false"
-            buildConfigField "String", "SECURITY_KEY", "\"PrimeProFast2024\""
+            buildConfigField("boolean", "DEBUG_MODE", "false")
+            buildConfigField("String", "SECURITY_KEY", "\"PrimeProFast2024\"")
             
             // Otimizações para evitar timeout do AAPT2
-            aaptOptions {
-                cruncherEnabled false
-            }
+            crunchPngs = false
         }
     }
     
     // Configurações para evitar timeout do AAPT2
-    aaptOptions {
-        noCompress 'png', 'jpg', 'jpeg'
-        ignoreAssetsPattern "!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~"
+    androidResources {
+        noCompress.addAll(['png', 'jpg', 'jpeg'])
+        ignoreAssetsPattern = "!.svn:!.git:.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~"
     }
     
     // Desabilitar lint para release temporariamente
     lint {
-        checkReleaseBuilds false
-        abortOnError false
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     externalNativeBuild {
         cmake {
-            path "src/main/cpp/CMakeLists.txt"
+            path = file("src/main/cpp/CMakeLists.txt")
         }
     }
 }

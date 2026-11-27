@@ -12,7 +12,6 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Gravity;
-import android.view.WindowManager;
 import android.view.MotionEvent;
 import android.webkit.WebView;
 import android.graphics.Canvas;
@@ -29,10 +28,13 @@ import android.graphics.Typeface;
 import android.media.AudioAttributes;
 import android.media.SoundPool;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.content.Intent;
@@ -388,10 +390,28 @@ public class MainActivity extends AppCompatActivity {
     private static native int arcadePoints(int number, boolean prime, boolean capture);
     private static native int arcadeAddScoreNativo(int score, int points);
     private static native int arcadeStage(int score, boolean flight);
+    private static native int arcadePhaseTarget(int stage, boolean flight);
+    private static native int arcadePhaseDuration(boolean flight);
+    private static native int arcadePhaseOutcome(int stage, boolean flight, int elapsed, int points, boolean crashed);
+    private static native int[] arcadeBossNativo(int stage);
+    private static native int arcadeEnemyRoleNativo(boolean prime, boolean flight, int stage, int seed);
+    private static native int arcadeAddChargeNativo(int charge, int prime);
+    private static native int arcadeBossDamageNativo(int charge);
+    private static native int[] arcadeFlightStageNativo(int stage);
+    private static native int arcadeFlightLootNativo(int stage, int destroyed);
+    private static native int arcadeBossDropsNativo(int before, int after, int maximum);
+    private static native boolean arcadeShieldInterceptsNativo(double dx, double dy);
+    private static native int arcadeUpgradeDamageNativo(int charge, int weapon);
+    private static native int arcadeMaxLivesNativo(int parts);
+    private static native int arcadeFlightOutcomeNativo(int lives, int bossHealth);
+    private static final int ARCADE_ARMED = 1, ARCADE_REPAIR = 2;
+    private static final int EARTH_STAGE = 50, BONUS_STAGE = 51;
     private static native int arcadeVehicle(int stage);
     private static native int[] arcadeRulesNativo();
     private static native int[] arcadeSpawnNativo(boolean flight, int score, int seed, int previous);
     private static native double arcadeRunnerSpeedNativo(int score);
+    private static native boolean arcadeRoadHitNativo(double previousX, double previousY, double x, double y,
+            double targetX, double targetY, double height);
     private static native double arcadeJumpHeightNativo(double seconds);
     private static native boolean arcadeCollidesNativo(int first, double x1, double y1, int second, double x2, double y2);
     private static native boolean arcadeRunnerPassedNativo(double x);
@@ -541,19 +561,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void atualizarCoresSistema() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            aplicarCoresLegadasDasBarras();
+        }
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(!temaEscuro);
+        controller.setAppearanceLightNavigationBars(!temaEscuro);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void aplicarCoresLegadasDasBarras() {
         getWindow().setStatusBarColor(corFundoTopo());
         getWindow().setNavigationBarColor(corFundoBase());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            android.view.WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                int mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-                        | android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-                controller.setSystemBarsAppearance(temaEscuro ? 0 : mask, mask);
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            int flags = temaEscuro ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            getWindow().getDecorView().setSystemUiVisibility(flags);
-        }
     }
 
     private void estilizarBotaoSecundario(Button btn) {
@@ -691,7 +711,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void aplicarMargensDoSistema(LinearLayout root) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) return;
-        getWindow().setDecorFitsSystemWindows(false);
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         final int margem = dpUi(10);
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             int types = android.view.WindowInsets.Type.systemBars()
@@ -1026,56 +1046,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Otimiza o layout para diferentes tamanhos de tela
-     */
-    private void otimizarLayoutResponsivo() {
-        // Obter dimensões da tela
-        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-
-        int screenWidth = metrics.widthPixels;
-        int screenHeight = metrics.heightPixels;
-        float density = metrics.density;
-
-        // Ajustar tamanhos baseados na densidade da tela
-        if (density >= 3.0f) {
-            // Tela de alta densidade (xxhdpi)
-            ajustarTamanhosParaAltaDensidade();
-        } else if (density >= 2.0f) {
-            // Tela de densidade média-alta (xhdpi)
-            ajustarTamanhosParaMediaDensidade();
-        } else {
-            // Tela de baixa densidade (hdpi)
-            ajustarTamanhosParaBaixaDensidade();
-        }
-
-        // Ajustar para orientação landscape
-        if (screenWidth > screenHeight) {
-            ajustarParaOrientacaoLandscape();
-        }
-    }
-
-    private void ajustarTamanhosParaAltaDensidade() {
-        // Aumentar tamanhos para telas de alta densidade
-        // Implementar ajustes específicos se necessário
-    }
-
-    private void ajustarTamanhosParaMediaDensidade() {
-        // Tamanhos padrão para telas de densidade média
-        // Implementar ajustes específicos se necessário
-    }
-
-    private void ajustarTamanhosParaBaixaDensidade() {
-        // Reduzir tamanhos para telas de baixa densidade
-        // Implementar ajustes específicos se necessário
-    }
-
-    private void ajustarParaOrientacaoLandscape() {
-        // Ajustar layout para orientação landscape
-        // Implementar ajustes específicos se necessário
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
@@ -1105,8 +1075,7 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
     }
 
-    @Override
-    public void onBackPressed() {
+    private boolean voltarDentroDoApp() {
         paradaUsuario = true;
         if (arcadeHost != null) {
             rootMainLayout.removeView(arcadeHost);
@@ -1116,7 +1085,7 @@ public class MainActivity extends AppCompatActivity {
             appHeader.setVisibility(View.VISIBLE);
             menuScrollView.setAlpha(1f);
             menuScrollView.setVisibility(View.VISIBLE);
-            return;
+            return true;
         }
         // Se estiver em uma tela de funcionalidade, voltar ao menu
         if (telaConteudoVisivel()) {
@@ -1144,10 +1113,9 @@ public class MainActivity extends AppCompatActivity {
             if (menuScrollView != null) {
                 menuScrollView.animate().alpha(1.0f).setDuration(300);
             }
-        } else {
-            // Se estiver no menu principal, sair do app
-            super.onBackPressed();
+            return true;
         }
+        return false;
     }
 
     @Override
@@ -1156,7 +1124,6 @@ public class MainActivity extends AppCompatActivity {
         if (savedInstanceState != null) {
             pdfToSave = savedInstanceState.getString(STATE_PDF_TO_SAVE);
         }
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         // Verificações de segurança
         if (!verificarSeguranca()) {
@@ -1176,10 +1143,19 @@ public class MainActivity extends AppCompatActivity {
         // Solicitar permissões de armazenamento
         requestStoragePermissions();
 
-        // Otimizar layout para diferentes tamanhos de tela
-        otimizarLayoutResponsivo();
-
         inicializarLayoutPrincipal();
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (voltarDentroDoApp()) return;
+                setEnabled(false);
+                try {
+                    getOnBackPressedDispatcher().onBackPressed();
+                } finally {
+                    setEnabled(true);
+                }
+            }
+        });
     }
 
     private void iniciarComprasPlay() {
@@ -1194,7 +1170,7 @@ public class MainActivity extends AppCompatActivity {
             public void onPurchaseCompletedSuccessfully() {
                 runOnUiThread(() -> {
                     Toast.makeText(MainActivity.this, "Compra concluída. Premium ativo.", Toast.LENGTH_LONG).show();
-                    onBackPressed();
+                    getOnBackPressedDispatcher().onBackPressed();
                     mostrarEstatisticasUso();
                 });
             }
@@ -1404,7 +1380,7 @@ public class MainActivity extends AppCompatActivity {
         card10.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card10);
 
-        View card11 = criarCard("Corrida Prima", "Pule compostos e capture primos em uma corrida infinita.", false);
+        View card11 = criarCard("Corrida Prima", "Desvie dos compostos e acerte os primos na estrada.", false);
         card11.setLayoutParams(layoutCardMenuParams());
         menuContainer.addView(card11);
 
@@ -2923,27 +2899,27 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean verificarAssinaturaDigital() {
         try {
-            // Verificar se a assinatura está correta
-            android.content.pm.PackageInfo packageInfo = getPackageManager()
-                .getPackageInfo(getPackageName(), android.content.pm.PackageManager.GET_SIGNATURES);
-
-            if (packageInfo.signatures == null || packageInfo.signatures.length == 0) {
-                return false;
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return possuiAssinaturaLegada();
+            android.content.pm.PackageInfo info;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                info = getPackageManager().getPackageInfo(getPackageName(),
+                        PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES));
+            } else {
+                info = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
             }
-
-            // Verificar se não é debug keystore
-            android.content.pm.Signature signature = packageInfo.signatures[0];
-            String signatureString = signature.toCharsString();
-
-            // Se for debug keystore, permitir apenas em desenvolvimento
-            if (signatureString.contains("androiddebugkey")) {
-                return true; // Permitir em desenvolvimento
-            }
-
-            return true; // Assinatura válida
+            android.content.pm.Signature[] assinantes = info.signingInfo == null
+                    ? null : info.signingInfo.getApkContentsSigners();
+            return assinantes != null && assinantes.length > 0;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean possuiAssinaturaLegada() throws PackageManager.NameNotFoundException {
+        android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(
+                getPackageName(), PackageManager.GET_SIGNATURES);
+        return info.signatures != null && info.signatures.length > 0;
     }
 
     /**
@@ -3537,7 +3513,7 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         Button voltar = arcadeButton("\u2190", "Voltar ao menu");
-        voltar.setOnClickListener(v -> onBackPressed());
+        voltar.setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
         toolbar.addView(voltar, new LinearLayout.LayoutParams(dpUi(48), dpUi(48)));
         TextView title = new TextView(this);
         title.setText(voo ? "Resgate Espacial" : "Corrida Prima");
@@ -3546,51 +3522,199 @@ public class MainActivity extends AppCompatActivity {
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         toolbar.addView(title, new LinearLayout.LayoutParams(0, dpUi(48), 1f));
+        Button fases = arcadeButton("\u2637", "Fases");
+        toolbar.addView(fases, new LinearLayout.LayoutParams(dpUi(44), dpUi(48)));
         Button reiniciar = arcadeButton("\u21bb", "Reiniciar");
         toolbar.addView(reiniciar, new LinearLayout.LayoutParams(dpUi(48), dpUi(48)));
         host.addView(toolbar);
 
+        FrameLayout board = new FrameLayout(this);
+        board.setClipChildren(true);
+        board.setClipToPadding(true);
         View jogo;
         if (voo) {
-            primeShooterView = new PrimeShooterView(this);
-            jogo = primeShooterView;
-            reiniciar.setOnClickListener(v -> primeShooterView.reiniciarDoZero());
+            PrimeShooterView view = new PrimeShooterView(this);
+            primeShooterView = view;
+            jogo = view;
+            view.phaseReady = () -> mostrarResultadoArcade(board, view, view.phase, view.pontuacao,
+                    view.lives, view::avancarFase, view::repetirFase);
+            reiniciar.setOnClickListener(v -> {
+                limparResultadoArcade(board, view);
+                view.repetirFase();
+            });
+            fases.setOnClickListener(v -> {
+                view.pausar();
+                mostrarFasesArcade(true, index -> {
+                    limparResultadoArcade(board, view);
+                    view.iniciarFaseEscolhida(index);
+                });
+            });
         } else {
-            primeRunnerView = new PrimeRunnerView(this);
-            jogo = primeRunnerView;
-            reiniciar.setOnClickListener(v -> primeRunnerView.reiniciarPartida());
+            PrimeRunnerView view = new PrimeRunnerView(this);
+            primeRunnerView = view;
+            jogo = view;
+            view.phaseReady = () -> mostrarResultadoArcade(board, view, view.phase, view.pontuacao,
+                    -1, view::avancarFase, view::repetirFase);
+            reiniciar.setOnClickListener(v -> {
+                limparResultadoArcade(board, view);
+                view.repetirFase();
+            });
+            fases.setOnClickListener(v -> {
+                view.pausar();
+                mostrarFasesArcade(false, index -> {
+                    limparResultadoArcade(board, view);
+                    view.iniciarFaseEscolhida(index);
+                });
+            });
         }
-        host.addView(jogo, new LinearLayout.LayoutParams(
+        board.addView(jogo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        host.addView(board, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        if (!voo) {
-            Button pular = arcadeButton("Pular", "Pular");
-            configurarBotaoPular(pular, primeRunnerView::tocarPista);
-            host.addView(pular, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpUi(48)));
-        }
         rootMainLayout.addView(host, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
     }
 
-    @android.annotation.SuppressLint("ClickableViewAccessibility")
-    private void configurarBotaoPular(Button button, Runnable pular) {
-        button.setOnClickListener(view -> pular.run());
-        button.setOnTouchListener((view, event) -> {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    view.setPressed(true);
-                    pular.run();
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    view.setPressed(false);
-                    break;
-                default:
-                    break;
+    private static final class ArcadePhase {
+        static final int PASSED = 1, CRASHED = 3;
+        final boolean flight;
+        int duration;
+        int[] flightStage;
+        int index, startingScore, elapsed, outcome;
+        long exitStart = -1;
+        boolean shown;
+
+        ArcadePhase(boolean flight) {
+            this.flight = flight;
+            duration = arcadePhaseDuration(flight);
+        }
+
+        void reset(int index, int startingScore) {
+            this.index = index;
+            this.startingScore = startingScore;
+            if (flight) {
+                flightStage = arcadeFlightStageNativo(index);
+                duration = flightStage[0];
             }
+            exitStart = -1;
+            shown = false;
+            elapsed = 0;
+            outcome = 0;
+        }
+
+        int points(int total) { return Math.max(0, total - startingScore); }
+        int pace() { return Math.min(25, index) * (flight ? 600 : 40); }
+        int remainingSeconds() { return (Math.max(0, duration - elapsed) + 999) / 1000; }
+
+        boolean conclude(long now, int total, boolean crashed, SharedPreferences prefs) {
+            return concludeWith(now, total, arcadePhaseOutcome(index, flight, elapsed, points(total), crashed), prefs);
+        }
+
+        boolean concludeWith(long now, int total, int result, SharedPreferences prefs) {
+            if (outcome != 0) return false;
+            outcome = result;
+            if (outcome == 0) return false;
+            exitStart = now;
+            SharedPreferences.Editor edit = prefs.edit();
+            if ((flight || outcome != CRASHED) && points(total) > prefs.getInt("timed_best_" + index, -1)) {
+                edit.putInt("timed_best_" + index, points(total));
+            }
+            if (outcome == PASSED) {
+                int next = flight ? Math.min(BONUS_STAGE, index + 1) : index + 1;
+                edit.putInt(flight ? "campaign_unlocked" : "timed_unlocked", Math.max(next, arcadeUnlocked(prefs, flight)));
+            }
+            edit.apply();
             return true;
-        });
+        }
+
+        float exitProgress(long now) {
+            if (exitStart < 0) return 0;
+            float t = Math.max(0, Math.min(1, (now - exitStart) / 850f));
+            return t * t * (3 - 2 * t);
+        }
     }
 
+    private SharedPreferences arcadePrefs(boolean flight) {
+        return getSharedPreferences(flight ? PREFS_PRIME_SHOOTER : PREFS_PRIME_RUNNER, MODE_PRIVATE);
+    }
+
+    private static int arcadeUnlocked(SharedPreferences prefs, boolean flight) {
+        int unlocked = Math.max(0, prefs.getInt(flight ? "campaign_unlocked" : "timed_unlocked", 0));
+        return flight ? Math.min(BONUS_STAGE, unlocked) : unlocked;
+    }
+
+    private void mostrarFasesArcade(boolean flight, java.util.function.IntConsumer select) {
+        SharedPreferences prefs = arcadePrefs(flight);
+        String[] phases = new String[arcadeUnlocked(prefs, flight) + 1];
+        for (int i = 0; i < phases.length; i++) {
+            int best = prefs.getInt("timed_best_" + i, -1);
+            String title = flight && i == EARTH_STAGE ? "M51 · Defesa da Terra"
+                : flight && i == BONUS_STAGE ? "M52 · Missão bônus" : "Fase " + (i + 1);
+            phases[i] = title + (best < 0 ? "" : "  •  Recorde " + formatarPontuacaoArcade(best));
+        }
+        new AlertDialog.Builder(this).setTitle("Fases")
+                .setItems(phases, (dialog, index) -> select.accept(index))
+                .setNegativeButton("Fechar", null).show();
+    }
+
+    private void limparResultadoArcade(FrameLayout board, View game) {
+        if (board.getChildCount() > 1) board.removeViewAt(1);
+        game.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+    }
+
+    private void mostrarResultadoArcade(FrameLayout board, View game, ArcadePhase phase, int score,
+                                       int lives, Runnable continuar, Runnable repetir) {
+        if (!board.isAttachedToWindow() || board.getChildCount() != 1) return;
+        game.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        FrameLayout dim = new FrameLayout(this);
+        dim.setBackgroundColor(0xD009131D);
+        dim.setClickable(true);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dpUi(20), dpUi(20), dpUi(20), dpUi(16));
+        panel.setBackground(fundoArredondado(0xFF182731, 8, 1, 0xFF42615F));
+        FrameLayout.LayoutParams centered = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        centered.setMargins(dpUi(20), dpUi(12), dpUi(20), dpUi(12));
+        dim.addView(panel, centered);
+        TextView heading = new TextView(this);
+        boolean passed = phase.outcome == ArcadePhase.PASSED;
+        heading.setText("Fase " + (phase.index + 1) + (passed ? " concluída" : " não superada"));
+        heading.setTextColor(passed ? 0xFFFFDB91 : 0xFFFFB9A5);
+        heading.setTextSize(22);
+        heading.setTypeface(Typeface.DEFAULT_BOLD);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) heading.setAccessibilityHeading(true);
+        panel.addView(heading);
+        TextView stats = new TextView(this);
+        int record = arcadePrefs(phase.flight).getInt("timed_best_" + phase.index, -1);
+        stats.setText((phase.outcome == ArcadePhase.CRASHED ? "Percurso interrompido\n" : "")
+                + "Pontos na fase: " + formatarPontuacaoArcade(phase.points(score))
+                + (phase.flight ? "" : "\nMínimo: " + formatarPontuacaoArcade(arcadePhaseTarget(phase.index, false)))
+                + "\nRecorde da fase: " + (record >= 0 ? formatarPontuacaoArcade(record) : "—")
+                + (lives >= 0 ? "\nVidas: " + lives : ""));
+        stats.setTextColor(Color.WHITE);
+        stats.setTextSize(16);
+        stats.setPadding(0, dpUi(12), 0, dpUi(14));
+        panel.addView(stats);
+        if (passed && (!phase.flight || phase.index < BONUS_STAGE)) {
+            Button next = criarBotaoModerno(phase.flight && phase.index == EARTH_STAGE ? "Missão bônus" : "Próxima fase", 0xFF137769, 0xFF285B76);
+            panel.addView(next, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpUi(48)));
+            next.setOnClickListener(v -> {
+                limparResultadoArcade(board, game);
+                continuar.run();
+            });
+        }
+        Button retry = criarBotaoModerno("Rejogar fase", 0xFF2C4553, 0xFF263A48);
+        panel.addView(retry, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpUi(48)));
+        retry.setOnClickListener(v -> {
+            limparResultadoArcade(board, game);
+            repetir.run();
+        });
+        board.addView(dim, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dim.setAlpha(0f);
+        dim.animate().alpha(1f).setDuration(200).start();
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
     private Button arcadeButton(String label, String description) {
         Button button = new Button(this, null, android.R.attr.borderlessButtonStyle);
         button.setText(label);
@@ -6845,33 +6969,41 @@ public class MainActivity extends AppCompatActivity {
 
     private static class PrimeRunnerNumero {
         float x;
+        float y;
+        long nextAttack;
+        int role;
+        final int lane;
         final int value;
         final boolean prime;
 
-        PrimeRunnerNumero(float x, int value, boolean prime) {
+        PrimeRunnerNumero(float x, int lane, int value, boolean prime) {
             this.x = x;
+            this.lane = lane;
             this.value = value;
             this.prime = prime;
         }
     }
 
     private class PrimeRunnerView extends View {
-        private final android.graphics.Bitmap[] veiculos = carregarVeiculos("bicycle", "motorcycle", "car");
+        private final ArcadePhase phase = new ArcadePhase(false);
+        private Runnable phaseReady;
+        private final android.graphics.Bitmap[] veiculos = carregarVeiculos("motorcycle", "car", "car");
         private final android.graphics.Bitmap estrada = carregarImagemArcade("road.jpg");
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Bitmap arvore = carregarImagemArcade("road-tree.png");
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         private final RectF chipRect = new RectF();
         private final ArrayList<PrimeRunnerNumero> numeros = new ArrayList<>();
-        private long lastFrameMs;
-        private long playTimeMs;
-        private long nextSpawnMs;
-        private int previousNumber;
-        private long pulseUntilMs;
-        private int pontuacao;
-        private float jumpOffset;
-        private long jumpStartedMs;
-        private int bestScore;
-        private boolean gameOver;
-        private boolean running;
+        private final ArrayList<PrimeShooterShot> disparos = new ArrayList<>();
+        private boolean roadFire;
+        private float fireX, fireY;
+        private long roadShotAt;
+        private long lastFrameMs, playTimeMs, nextSpawnMs, pulseUntilMs, burstAt;
+        private int previousNumber, pontuacao, bestScore;
+        private float carX, carY, touchX, touchY, burstX, burstY;
+        private float previousCarX, previousCarY;
+        private int pointer = -1;
+        private double travel;
+        private boolean gameOver, running;
         private String pulseText = "";
         private int pulseColor = Color.WHITE;
 
@@ -6879,21 +7011,45 @@ public class MainActivity extends AppCompatActivity {
             super(context);
             setFocusable(true);
             setClickable(true);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            setContentDescription("Corrida Prima");
             bestScore = getSharedPreferences(PREFS_PRIME_RUNNER, MODE_PRIVATE).getInt(KEY_PR_BEST_SCORE, 0);
             reiniciarPartida();
         }
 
+        private float laneY(int lane) { return getHeight() * (0.59f + 0.12f * lane); }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            carX = w * 0.30f;
+            carY = laneY(1);
+            previousCarX = carX;
+            previousCarY = carY;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                int center = (int) laneY(1);
+                setSystemGestureExclusionRects(java.util.Collections.singletonList(new android.graphics.Rect(
+                    0, Math.max(0, center - dpUi(100)), w, Math.min(h, center + dpUi(100)))));
+            }
+        }
+
         void reiniciarPartida() {
             numeros.clear();
+            disparos.clear();
+            roadFire = false;
+            roadShotAt = 0;
             lastFrameMs = 0;
             playTimeMs = 0;
             nextSpawnMs = ArcadeRules.START_MS;
             previousNumber = 0;
             pulseUntilMs = 0;
+            burstAt = -1000;
             pontuacao = 0;
-            jumpOffset = 0f;
-            jumpStartedMs = -1;
+            phase.reset(0, 0);
+            travel = 0;
+            pointer = -1;
+            carX = getWidth() * 0.30f;
+            carY = laneY(1);
+            previousCarX = carX;
+            previousCarY = carY;
             gameOver = false;
             running = false;
             pulseText = "";
@@ -6902,6 +7058,8 @@ public class MainActivity extends AppCompatActivity {
 
         void pausar() {
             running = false;
+            roadFire = false;
+            pointer = -1;
             lastFrameMs = 0;
             salvarRecorde();
             invalidate();
@@ -6915,141 +7073,251 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            if (getParent() != null) {
-                getParent().requestDisallowInterceptTouchEvent(true);
+            if (phase.exitStart >= 0) return true;
+            int action = event.getActionMasked();
+            if (action != MotionEvent.ACTION_MOVE) roadFire = false;
+            if (action == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
+                fireX = (event.getX(0) + event.getX(1)) / 2;
+                fireY = (event.getY(0) + event.getY(1)) / 2;
+            } else if (action == MotionEvent.ACTION_MOVE && event.getPointerCount() == 2) {
+                float cx = (event.getX(0) + event.getX(1)) / 2;
+                float cy = (event.getY(0) + event.getY(1)) / 2;
+                roadFire |= Math.hypot(cx - fireX, cy - fireY) >= dpUi(4);
             }
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-                tocarPista();
-                return true;
-            }
-            if (event.getActionMasked() == MotionEvent.ACTION_UP
-                    || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-                if (getParent() != null) {
-                    getParent().requestDisallowInterceptTouchEvent(false);
+            if (action == MotionEvent.ACTION_DOWN) {
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                performClick();
+                pointer = event.getPointerId(0);
+                touchX = event.getX();
+                touchY = event.getY();
+            } else if (action == MotionEvent.ACTION_MOVE) {
+                int index = event.findPointerIndex(pointer);
+                if (index >= 0 && running && !gameOver) {
+                    float x = event.getX(index), y = event.getY(index);
+                    float left = Math.min(getWidth() * 0.30f, dpUi(44));
+                    carX = Math.max(left, Math.min(getWidth() * 0.64f, carX + x - touchX));
+                    carY = Math.max(laneY(0), Math.min(laneY(2), carY + y - touchY));
+                    touchX = x;
+                    touchY = y;
+                    invalidate();
                 }
-                return true;
+            } else if (action == MotionEvent.ACTION_POINTER_UP
+                    && event.getPointerId(event.getActionIndex()) == pointer) {
+                int next = event.getActionIndex() == 0 ? 1 : 0;
+                pointer = event.getPointerId(next);
+                touchX = event.getX(next);
+                touchY = event.getY(next);
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                pointer = -1;
+                if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
             }
+            return true;
+        }
+
+        @Override
+        public boolean performClick() {
+            if (phase.exitStart >= 0) return false;
+            super.performClick();
+            if (gameOver) reiniciarPartida();
+            if (!running) {
+                running = true;
+                lastFrameMs = 0;
+            }
+            invalidate();
             return true;
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            int w = getWidth();
-            int h = getHeight();
-            if (w <= 0 || h <= 0) {
-                return;
-            }
-
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
             long now = android.os.SystemClock.uptimeMillis();
-            if (lastFrameMs == 0) {
-                lastFrameMs = now;
-            }
-            long deltaMs = Math.min(ArcadeRules.MAX_FRAME_MS, Math.max(0, now - lastFrameMs));
+            if (lastFrameMs == 0) lastFrameMs = now;
+            long delta = Math.min(ArcadeRules.MAX_FRAME_MS, Math.max(0, now - lastFrameMs));
             lastFrameMs = now;
-
             if (running && !gameOver) {
-                playTimeMs += deltaMs;
-                atualizar(deltaMs / 1000f, now, w);
+                delta = Math.min(delta, phase.duration - phase.elapsed);
+                phase.elapsed += (int) delta;
+                playTimeMs += delta;
+                atualizar(delta / 1000f, now, w);
+                completarFase(now, false);
             }
 
-            desenharFundo(canvas, w, h);
-            desenharPista(canvas, w, h, now);
-            desenharNumeros(canvas, h);
-            desenharCorredor(canvas, h, now);
+            desenharPista(canvas, w, h);
+            for (PrimeShooterShot shot : disparos) {
+                float sy = roadY(shot.x, shot.y);
+                paint.setColor(shot.hostile ? 0xFFFF806F : 0xFFFFE49A);
+                if (shot.hostile) {
+                    paint.setStrokeWidth(dpUi(5));
+                    canvas.drawLine(shot.x, sy, shot.x + dpUi(34), roadY(shot.x + dpUi(34), shot.y), paint);
+                    canvas.drawCircle(shot.x, sy, dpUi(13), paint);
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    paint.setTextSize(dpUi(11));
+                    paint.setColor(0xFF230914);
+                    canvas.drawText(String.valueOf(shot.number), shot.x, sy + dpUi(4), paint);
+                } else {
+                    canvas.drawRoundRect(shot.x - dpUi(12), sy - dpUi(3), shot.x + dpUi(12), sy + dpUi(3), dpUi(3), dpUi(3), paint);
+                }
+            }
+            desenharNumeros(canvas);
+            float departure = phase.exitProgress(now);
+            if (departure < 1 || phase.outcome == ArcadePhase.CRASHED) {
+                canvas.save();
+                canvas.translate(0, roadY(carX, carY) - carY);
+                if (phase.outcome != ArcadePhase.CRASHED) canvas.translate((w - carX + dpUi(94)) * departure, 0);
+                desenharCorredor(canvas);
+                canvas.restore();
+            }
+            desenharExplosao(canvas, now);
             desenharPlacar(canvas);
             desenharPulso(canvas, w, now);
-
-            if (gameOver) {
-                desenharFim(canvas, w, h);
-            } else if (running) {
-                postInvalidateOnAnimation();
-            } else {
-                desenharPausaArcade(canvas, w, h, playTimeMs > 0, paint);
-            }
+            if (phase.exitStart >= 0) {
+                if (departure < 1) postInvalidateOnAnimation();
+                else if (!phase.shown && phaseReady != null) {
+                    phase.shown = true;
+                    post(() -> { if (phase.shown) phaseReady.run(); });
+                }
+            } else if (gameOver && now - burstAt >= 420) desenharFim(canvas, w, h);
+            else if (gameOver) postInvalidateOnAnimation();
+            else if (running) postInvalidateOnAnimation();
+            else desenharPausaArcade(canvas, w, h, playTimeMs > 0, paint);
         }
 
         private void atualizar(float dt, long now, int w) {
             float density = getResources().getDisplayMetrics().density;
-            if (jumpStartedMs >= 0) {
-                long elapsed = playTimeMs - jumpStartedMs;
-                jumpOffset = (float) arcadeJumpHeightNativo(elapsed / 1000.0) * density;
-                if (elapsed > 0 && jumpOffset <= 0) jumpStartedMs = -1;
+            float distance = (float) arcadeRunnerSpeedNativo(phase.pace()) * density * dt;
+            travel += distance;
+            if (roadFire && playTimeMs >= roadShotAt) {
+                disparos.add(new PrimeShooterShot(carX + dpUi(33), carY, 490 * density, 0, false));
+                roadShotAt = playTimeMs + 240;
             }
-
             if (playTimeMs >= nextSpawnMs) {
-                int[] spawn = arcadeSpawnNativo(false, pontuacao, primeMatchRandom.nextInt(), previousNumber);
+                int[] spawn = arcadeSpawnNativo(false, phase.pace(), primeMatchRandom.nextInt(), previousNumber);
                 previousNumber = spawn[0];
-                numeros.add(new PrimeRunnerNumero(w + ArcadeRules.SPAWN_MARGIN * density, previousNumber, spawn[1] != 0));
+                PrimeRunnerNumero item = new PrimeRunnerNumero(w + dpUi(34), spawn[4], previousNumber, spawn[1] != 0);
+                item.y = laneY(item.lane);
+                item.role = arcadeEnemyRoleNativo(item.prime, false, phase.index, primeMatchRandom.nextInt());
+                item.nextAttack = playTimeMs + 300;
+                numeros.add(item);
                 nextSpawnMs = playTimeMs + spawn[3];
             }
-
-            float velocidade = (float) arcadeRunnerSpeedNativo(pontuacao) * density;
-            double baseY = ArcadeRules.FLOOR_Y + ArcadeRules.RUNNER_CENTER;
+            for (int i = disparos.size() - 1; i >= 0; i--) {
+                PrimeShooterShot shot = disparos.get(i);
+                shot.x += shot.vx * dt;
+                if (shot.x < -dpUi(22) || shot.x > w + dpUi(22)) { disparos.remove(i); continue; }
+                if (shot.hostile) {
+                    if (Math.abs(shot.x - carX) < dpUi(25) && Math.abs(shot.y - carY) < dpUi(12)) {
+                        disparos.remove(i);
+                        gameOver = true;
+                        burstAt = now; burstX = carX; burstY = carY;
+                        mostrarPulso("Impacto: projétil composto", 0xFFFBA890, now);
+                        tocarPrimeMatchSom(primeMatchSoundComposite);
+                        completarFase(now, true);
+                        return;
+                    }
+                    continue;
+                }
+                for (int j = numeros.size() - 1; j >= 0; j--) {
+                    PrimeRunnerNumero item = numeros.get(j);
+                    if (Math.abs(shot.x - item.x) >= dpUi(25) || Math.abs(shot.y - item.y) >= dpUi(15)) continue;
+                    disparos.remove(i);
+                    numeros.remove(j);
+                    if (!item.prime) {
+                        int points = arcadePoints(item.value, false, false);
+                        pontuacao = arcadeAddScoreNativo(pontuacao, points);
+                        mostrarPulso("Composto " + item.value + "  +" + points, 0xFF93C5FD, now);
+                        tocarPrimeMatchSom(primeMatchSoundCombo);
+                    } else {
+                        mostrarPulso("Primo perdido", 0xFFFCA5A5, now);
+                    }
+                    burstAt = now; burstX = item.x; burstY = item.y;
+                    break;
+                }
+            }
 
             for (int i = numeros.size() - 1; i >= 0; i--) {
                 PrimeRunnerNumero numero = numeros.get(i);
-                numero.x -= velocidade * dt;
-                if (numero.x < -ArcadeRules.SPAWN_MARGIN * density) {
-                    numeros.remove(i);
-                    continue;
+                float enemyTravel = distance * (numero.role == ARCADE_ARMED ? 1.23f : 1f);
+                numero.x -= enemyTravel;
+                if (numero.role == ARCADE_ARMED) {
+                    float wanted = carY + (float) Math.sin(playTimeMs / 460.0) * dpUi(17);
+                    float shift = Math.max(-dpUi(44) * dt, Math.min(dpUi(44) * dt, wanted - numero.y));
+                    numero.y = Math.max(laneY(0), Math.min(laneY(2), numero.y + shift));
+                    if (playTimeMs >= numero.nextAttack && numero.x < w - dpUi(8)
+                            && numero.x > carX + Math.max(dpUi(108), w * .27f)) {
+                        disparos.add(new PrimeShooterShot(numero.x - dpUi(23), numero.y, -310 * density, 0, true, numero.value));
+                        numero.nextAttack = playTimeMs + 1650;
+                    }
                 }
-
-                if (arcadeCollidesNativo(ArcadeRules.RUNNER_BOX, ArcadeRules.RUNNER_X, baseY + jumpOffset / density,
-                    ArcadeRules.RUNNER_NUMBER, numero.x / density, baseY)) {
-                    if (numero.prime) {
-                        int bonus = arcadePoints(numero.value, numero.prime, true);
-                        pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
-                        mostrarPulso("Primo " + numero.value + "  +" + bonus, Color.parseColor("#FFE08A"), now);
-                        tocarPrimeMatchSom(primeMatchSoundPrime);
-                        numeros.remove(i);
-                    } else {
-                        encerrarCorrida(now);
+                if (arcadeRoadHitNativo((previousCarX - enemyTravel) / density, previousCarY / density,
+                        carX / density, carY / density, numero.x / density, numero.y / density,
+                        getHeight() / density)) {
+                    numeros.remove(i);
+                    burstAt = now;
+                    burstX = numero.x;
+                    burstY = numero.y;
+                    if (!numero.prime) {
+                        gameOver = true;
+                        mostrarPulso("Composto " + numero.value, 0xFFFFB4A2, now);
+                        tocarPrimeMatchSom(primeMatchSoundComposite);
+                        completarFase(now, true);
                         return;
                     }
-                } else if (!numero.prime && arcadeRunnerPassedNativo(numero.x / density)) {
-                    int pontos = arcadePoints(numero.value, false, false);
+                    int pontos = arcadePoints(numero.value, true, true);
                     pontuacao = arcadeAddScoreNativo(pontuacao, pontos);
-                    mostrarPulso("Pulou " + numero.value + "  +" + pontos, Color.parseColor("#A7F3D0"), now);
+                    mostrarPulso("Primo " + numero.value + "  +" + pontos, 0xFFFFE08A, now);
+                    tocarPrimeMatchSom(primeMatchSoundPrime);
+                } else if (numero.x < -dpUi(34)) {
                     numeros.remove(i);
+                    if (!numero.prime) {
+                        int pontos = arcadePoints(numero.value, false, false);
+                        pontuacao = arcadeAddScoreNativo(pontuacao, pontos);
+                        mostrarPulso("Desviou " + numero.value + "  +" + pontos, 0xFFA7F3D0, now);
+                    }
                 }
             }
+            previousCarX = carX;
+            previousCarY = carY;
         }
 
-        private void tocarPista() {
-            if (gameOver) {
-                reiniciarPartida();
-            }
-            if (!running) {
-                running = true;
-                lastFrameMs = 0;
-            }
-            pular();
+        private void completarFase(long now, boolean crashed) {
+            if (!phase.conclude(now, pontuacao, crashed, arcadePrefs(false))) return;
+            running = false;
+            pointer = -1;
+            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+            salvarRecorde();
+            if (phase.outcome == ArcadePhase.PASSED) tocarPrimeMatchSom(primeMatchSoundVictory);
+        }
+
+        private void avancarFase() {
+            if (phase.outcome != ArcadePhase.PASSED) return;
+            iniciarFase(phase.index + 1, pontuacao);
+        }
+
+        private void repetirFase() {
+            iniciarFase(phase.index, phase.startingScore);
+        }
+
+        private void iniciarFaseEscolhida(int stage) {
+            iniciarFase(stage, 0);
+            running = false;
+        }
+
+        private void iniciarFase(int stage, int baseScore) {
+            reiniciarPartida();
+            phase.reset(stage, baseScore);
+            pontuacao = baseScore;
+            playTimeMs = (stage % 2) * 28000L;
+            nextSpawnMs = playTimeMs + ArcadeRules.START_MS;
+            running = true;
             invalidate();
         }
 
-        private void pular() {
-            if (jumpStartedMs < 0) {
-                jumpStartedMs = playTimeMs;
-                tocarPrimeMatchSom(primeMatchSoundTap);
-            }
-        }
-
-        private void encerrarCorrida(long now) {
-            gameOver = true;
-            mostrarPulso("Composto!", Color.parseColor("#FFB4A2"), now);
-            tocarPrimeMatchSom(primeMatchSoundComposite);
-            salvarRecorde();
-        }
-
         private void salvarRecorde() {
-            int atual = Math.max(0, pontuacao);
-            if (atual > bestScore) {
-                bestScore = atual;
-                getSharedPreferences(PREFS_PRIME_RUNNER, MODE_PRIVATE)
-                        .edit()
-                        .putInt(KEY_PR_BEST_SCORE, bestScore)
-                        .apply();
+            if (pontuacao > bestScore) {
+                bestScore = pontuacao;
+                getSharedPreferences(PREFS_PRIME_RUNNER, MODE_PRIVATE).edit().putInt(KEY_PR_BEST_SCORE, bestScore).apply();
             }
         }
 
@@ -7059,92 +7327,188 @@ public class MainActivity extends AppCompatActivity {
             pulseUntilMs = now + 850;
         }
 
-        private void desenharFundo(Canvas canvas, int w, int h) {
-            if (desenharFotoArcade(canvas, estrada, w, h,
-                arcadeVehicle(arcadeStage(pontuacao, false)), paint)) return;
-            paint.setShader(new LinearGradient(0, 0, 0, h,
-                    new int[]{Color.parseColor("#184E77"), Color.parseColor("#168AAD"), Color.parseColor("#D9ED92")},
-                    null,
-                    Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(new RectF(0, 0, w, h), dpUi(18), dpUi(18), paint);
-            paint.setShader(null);
+        private float noite() {
+            double phase = (playTimeMs % 56000L) / 56000.0;
+            return (float) Math.max(0, Math.min(1, (0.5 - 0.5 * Math.cos(2 * Math.PI * phase) - 0.20) / 0.60));
         }
 
-        private void desenharPista(Canvas canvas, int w, int h, long now) {
-            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
-            paint.setColor(0xCE131F27);
-            canvas.drawRect(0, chao, w, h, paint);
-            paint.setColor(withAlpha(Color.WHITE, 80));
-            for (int i = 0; i < 9; i++) {
-                float x = ((i * dpUi(74) - (now % 60000L) / 6f) % (w + dpUi(74))
-                    + w + dpUi(74)) % (w + dpUi(74)) - dpUi(40);
-                canvas.drawRoundRect(new RectF(x, chao + dpUi(22), x + dpUi(34), chao + dpUi(26)), dpUi(4), dpUi(4), paint);
+        private float roadY(float x, float y) {
+            float along = Math.max(-.5f, Math.min(.5f, x / Math.max(1f, getWidth()) - .5f));
+            float center = getHeight() * .70f;
+            return center + (y - center) * (1 - .38f * along) - getHeight() * .028f * along;
+        }
+
+        private void desenharPista(Canvas c, int w, int h) {
+            c.drawColor(0xFF55717E);
+            paint.setAlpha(255);
+            if (estrada != null) {
+                int end = (int) (estrada.getHeight() * 0.79f);
+                float sceneHeight = h * .68f;
+                float scale = Math.max(w / (float) estrada.getWidth(), sceneHeight / end);
+                float sw = estrada.getWidth() * scale;
+                float shift = (float) (0.5 + 0.42 * Math.sin(travel / 10500));
+                float left = -(sw - w) * shift;
+                c.save();
+                c.clipRect(0, 0, w, sceneHeight);
+                c.drawBitmap(estrada, new android.graphics.Rect(0, 0, estrada.getWidth(), end),
+                    new RectF(left, sceneHeight - end * scale, left + sw, sceneHeight), paint);
+                c.restore();
             }
+
+            paint.setColor(0xFF566345);
+            Path ground = roadPolygon(w, h * .47f, h * 1.06f);
+            c.drawPath(ground, paint);
+            if (arvore != null) {
+                float gap = Math.max(dpUi(138), w / 3f);
+                float cycle = gap * 6;
+                for (int depth = 0; depth < 3; depth++) {
+                    for (int i = 0; i < 6; i++) {
+                        float x = (float) (((i * gap + depth * gap / 3 - travel * (.12 + depth * .21))
+                            % cycle + cycle) % cycle) - gap;
+                        float size = dpUi(56 + depth * 37 + (i * 31) % 36);
+                        float y = roadY(x + size / 2, h * (.43f + depth * .025f));
+                        paint.setAlpha(155 + 50 * depth);
+                        c.drawBitmap(arvore, null, new RectF(x, y - size, x + size, y), paint);
+                    }
+                }
+                paint.setAlpha(255);
+            }
+            float far = h * .515f, near = h * .965f;
+            Path asphalt = roadPolygon(w, far, near);
+            paint.setShader(new LinearGradient(0, far, 0, h, 0xFF484D48, 0xFF222827, Shader.TileMode.CLAMP));
+            c.drawPath(asphalt, paint);
+            paint.setShader(null);
+            if (estrada != null) {
+                c.save();
+                c.clipPath(asphalt);
+                paint.setAlpha(65);
+                c.drawBitmap(estrada, new android.graphics.Rect(0, (int) (estrada.getHeight() * 0.84f),
+                    estrada.getWidth(), estrada.getHeight()), new RectF(0, h * .46f, w, h * 1.02f), paint);
+                paint.setAlpha(255);
+                c.restore();
+            }
+            paint.setColor(0xFFE4D3A3);
+            paint.setStrokeWidth(dpUi(2));
+            c.drawLine(0, roadY(0, far), w, roadY(w, far), paint);
+            c.drawLine(0, roadY(0, near), w, roadY(w, near), paint);
+            paint.setColor(0xB8E9E7DB);
+            for (int lane = 0; lane < 2; lane++) {
+                float y = (laneY(lane) + laneY(lane + 1)) * 0.5f;
+                float stride = dpUi(60 + lane * 22);
+                float phase = (float) (travel * (.75 + lane * .24) % stride);
+                for (float x = -phase; x < w; x += stride) {
+                    float end = x + stride * (.48f - .14f * x / w);
+                    c.drawLine(x, roadY(x, y), end, roadY(end, y), paint);
+                }
+            }
+            paint.setColor(withAlpha(0xFF071229, (int) (194 * noite())));
+            c.drawRect(0, 0, w, h, paint);
         }
 
-        private void desenharNumeros(Canvas canvas, int h) {
-            float raio = dpUi(26);
-            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
-            for (PrimeRunnerNumero numero : numeros) {
-                int cor = numero.prime ? Color.parseColor("#2DD4BF") : Color.parseColor("#F97373");
+        private Path roadPolygon(int width, float far, float near) {
+            Path path = new Path();
+            path.moveTo(0, roadY(0, far));
+            path.lineTo(width, roadY(width, far));
+            path.lineTo(width, roadY(width, near));
+            path.lineTo(0, roadY(0, near));
+            path.close();
+            return path;
+        }
+
+        private void desenharNumeros(Canvas c) {
+            float radius = Math.min(dpUi(21), getHeight() * 0.049f);
+            for (PrimeRunnerNumero n : numeros) {
+                float y = roadY(n.x, n.y);
+                if (n.role == ARCADE_ARMED) {
+                    c.save();
+                    c.scale(-1, 1, n.x, y);
+                    paint.setColor(Color.WHITE);
+                    desenharVeiculo(c, veiculos[2], new RectF(n.x - dpUi(39), y - dpUi(21), n.x + dpUi(39), y + dpUi(21)), paint);
+                    c.restore();
+                    paint.setColor(0xFFEC784F);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dpUi(2));
+                    c.drawRoundRect(n.x - radius - dpUi(8), y - radius - dpUi(4), n.x + radius + dpUi(8), y + radius + dpUi(4),
+                        dpUi(8), dpUi(8), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                }
+                paint.setColor(n.prime ? 0xFF137769 : 0xFFA54233);
+                c.drawCircle(n.x, y, radius, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dpUi(2));
+                paint.setColor(n.prime ? 0xFF9EEAD7 : 0xFFFFCFB3);
+                c.drawCircle(n.x, y, radius - dpUi(1), paint);
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(withAlpha(Color.BLACK, 55));
-                canvas.drawCircle(numero.x + dpUi(3), chao - raio + dpUi(5), raio, paint);
-                paint.setColor(cor);
-                paint.setShadowLayer(dpUi(10), 0, dpUi(4), withAlpha(cor, 160));
-                canvas.drawCircle(numero.x, chao - raio, raio, paint);
-                paint.clearShadowLayer();
-                paint.setColor(withAlpha(Color.WHITE, 135));
-                canvas.drawCircle(numero.x - dpUi(9), chao - raio - dpUi(9), dpUi(8), paint);
                 paint.setColor(Color.WHITE);
                 paint.setTextAlign(Paint.Align.CENTER);
                 paint.setTypeface(Typeface.DEFAULT_BOLD);
-                paint.setTextSize(dpUi(17));
-                Paint.FontMetrics fm = paint.getFontMetrics();
-                canvas.drawText(String.valueOf(numero.value), numero.x, chao - raio - (fm.ascent + fm.descent) / 2f, paint);
+                paint.setTextSize(dpUi(16));
+                c.drawText(String.valueOf(n.value), n.x, y - (paint.ascent() + paint.descent()) / 2, paint);
             }
-            paint.setStyle(Paint.Style.FILL);
             paint.setTypeface(Typeface.DEFAULT);
         }
 
-        private void desenharCorredor(Canvas canvas, int h, long now) {
-            float raio = dpUi(25);
-            float chao = h - dpUi(ArcadeRules.FLOOR_Y);
-            float x = dpUi(ArcadeRules.RUNNER_X);
-            float y = chao - raio - jumpOffset;
-            paint.setColor(withAlpha(Color.BLACK, 60));
-            canvas.drawOval(new RectF(x - dpUi(24), chao - dpUi(7), x + dpUi(24), chao + dpUi(3)), paint);
-            int tier = arcadeVehicle(arcadeStage(pontuacao, false));
-            if (tier > 0 && !gameOver) desenharEscapeArcade(canvas, x - dpUi(37), y, now, false, paint);
-            paint.setColor(Color.WHITE);
-            RectF area = new RectF(x - dpUi(41), y - dpUi(24), x + dpUi(41), chao - jumpOffset);
-            if (desenharVeiculo(canvas, veiculos[tier], area, paint)) {
-                desenharRodas(canvas, veiculos[tier], area, tier, now);
-                return;
+        private void desenharCorredor(Canvas c) {
+            int tier = arcadeVehicle(phase.index);
+            float body = Math.min(dpUi(24), getHeight() * 0.053f);
+            if (noite() > 0.01f) {
+                Path luz = new Path();
+                luz.moveTo(carX + dpUi(30), carY);
+                luz.lineTo(carX + dpUi(155), carY - body);
+                luz.lineTo(carX + dpUi(155), carY + body);
+                luz.close();
+                paint.setShader(new LinearGradient(carX + dpUi(30), carY, carX + dpUi(155), carY,
+                    withAlpha(0xFFFFEBAC, (int) (128 * noite())), 0x00FFEBAC, Shader.TileMode.CLAMP));
+                c.drawPath(luz, paint);
+                paint.setShader(null);
             }
-            paint.setColor(Color.parseColor("#1D4ED8"));
-            paint.setShadowLayer(dpUi(12), 0, dpUi(3), withAlpha(Color.parseColor("#38BDF8"), 160));
-            canvas.drawRoundRect(new RectF(x - raio, y - raio, x + raio, y + raio), dpUi(16), dpUi(16), paint);
-            paint.clearShadowLayer();
+            paint.setColor(0x80000000);
+            c.drawOval(carX - dpUi(33), carY + body - dpUi(7), carX + dpUi(33), carY + body + dpUi(3), paint);
+            if (playTimeMs > 0) desenharEscapeArcade(c, carX - dpUi(37), carY + body * 0.45f, playTimeMs, false, paint);
             paint.setColor(Color.WHITE);
-            canvas.drawCircle(x + dpUi(9), y - dpUi(7), dpUi(5), paint);
-            paint.setColor(Color.parseColor("#FDE68A"));
-            canvas.drawCircle(x - dpUi(7), y + dpUi(7), dpUi(7), paint);
+            RectF area = new RectF(carX - dpUi(41), carY - body, carX + dpUi(41), carY + body);
+            if (desenharVeiculo(c, veiculos[tier], area, paint)) {
+                desenharRodas(c, veiculos[tier], area, tier);
+            } else {
+                paint.setColor(0xFF578DBC);
+                c.drawRoundRect(area, dpUi(8), dpUi(8), paint);
+            }
         }
 
-        private void desenharRodas(Canvas canvas, android.graphics.Bitmap sprite, RectF area, int tier, long now) {
+        private void desenharExplosao(Canvas c, long now) {
+            float t = (now - burstAt) / 420f;
+            if (t < 0 || t >= 1) return;
+            c.save();
+            c.translate(0, roadY(burstX, burstY) - burstY);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dpUi(3) * (1 - t) + 1);
+            paint.setColor(withAlpha(gameOver ? 0xFFFF8066 : 0xFFFFDA81, (int) (230 * (1 - t))));
+            c.drawCircle(burstX, burstY, dpUi(8) + dpUi(53) * t, paint);
+            for (int i = 0; i < 14; i++) {
+                double a = i * Math.PI / 7;
+                float distance = dpUi(16 + (i * 29) % 53) * t;
+                float dx = (float) Math.cos(a), dy = (float) Math.sin(a);
+                c.drawLine(burstX + distance * dx, burstY + distance * dy,
+                    burstX + (distance + dpUi(10) * (1 - t)) * dx,
+                    burstY + (distance + dpUi(10) * (1 - t)) * dy, paint);
+            }
+            paint.setStyle(Paint.Style.FILL);
+            c.restore();
+        }
+
+        private void desenharRodas(Canvas canvas, android.graphics.Bitmap sprite, RectF area, int tier) {
             float scale = Math.min(area.width() / sprite.getWidth(), area.height() / sprite.getHeight());
             float width = sprite.getWidth() * scale;
             float height = sprite.getHeight() * scale;
             float left = area.centerX() - width / 2f;
-            float y = area.bottom - height * (tier == 2 ? 0.30f : 0.34f);
+            float y = area.bottom - height * (tier == 0 ? 0.33f : 0.30f);
             paint.setColor(0x4DFFFFFF);
             paint.setStrokeWidth(dpUi(1));
             for (int i = 0; i < 2; i++) {
-                float hub = i == 0 ? (tier == 1 ? 0.23f : 0.18f) : (tier == 1 ? 0.81f : 0.77f);
+                float hub = i == 0 ? (tier == 0 ? 0.23f : 0.18f) : (tier == 0 ? 0.81f : 0.77f);
                 float x = left + width * hub;
                 canvas.save();
-                canvas.rotate((now % 350L) * 360f / 350f, x, y);
+                canvas.rotate((float) (Math.toDegrees(travel / dpUi(9)) % 360), x, y);
                 float raio = width * 0.085f;
                 canvas.drawLine(x - raio, y, x + raio, y, paint);
                 canvas.drawLine(x, y - raio, x, y + raio, paint);
@@ -7153,8 +7517,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharPlacar(Canvas canvas) {
-            desenharChip(canvas, "Pontos " + formatarPontuacaoArcade(pontuacao), dpUi(12), dpUi(12), Color.parseColor("#0F766E"));
-            desenharChip(canvas, "Recorde " + formatarPontuacaoArcade(bestScore), dpUi(12), dpUi(54), Color.parseColor("#1D4ED8"));
+            desenharChip(canvas, "Pontos " + formatarPontuacaoArcade(phase.points(pontuacao)), dpUi(12), dpUi(12), Color.parseColor("#0F766E"));
+            desenharChip(canvas, "Tempo " + phase.remainingSeconds() + " s", dpUi(12), dpUi(54), Color.parseColor("#1D4ED8"));
+            int target = arcadePhaseTarget(phase.index, false);
+            String label = "Fase " + (phase.index + 1) + (target > 0 ? "  •  Meta " + formatarPontuacaoArcade(target) : "");
+            desenharChip(canvas, label, dpUi(12), dpUi(96), 0xFF293D49);
         }
 
         private void desenharChip(Canvas canvas, String texto, float left, float top, int cor) {
@@ -7182,7 +7549,7 @@ public class MainActivity extends AppCompatActivity {
             paint.setTypeface(Typeface.DEFAULT_BOLD);
             paint.setTextAlign(Paint.Align.CENTER);
             paint.setShadowLayer(dpUi(8), 0, dpUi(2), withAlpha(Color.BLACK, 120));
-            canvas.drawText(pulseText, w / 2f, dpUi(112) - dpUi(20) * (1f - alpha), paint);
+            canvas.drawText(pulseText, w / 2f, dpUi(166) - dpUi(20) * (1f - alpha), paint);
             paint.clearShadowLayer();
             paint.setTypeface(Typeface.DEFAULT);
         }
@@ -7207,6 +7574,10 @@ public class MainActivity extends AppCompatActivity {
         final float speed;
         final int value;
         final boolean prime;
+        int role;
+        int loot;
+        float escortOffset = Float.NaN;
+        long nextAttack;
 
         PrimeShooterItem(float x, float y, float speed, int value, boolean prime) {
             this.x = x;
@@ -7220,16 +7591,41 @@ public class MainActivity extends AppCompatActivity {
     private static class PrimeShooterShot {
         float x;
         float y;
+        final float vx, vy;
+        final boolean hostile;
+        final int number;
 
         PrimeShooterShot(float x, float y) {
+            this(x, y, 0, 0, false);
+        }
+
+        PrimeShooterShot(float x, float y, float vx, float vy, boolean hostile) {
+            this(x, y, vx, vy, hostile, 4);
+        }
+
+        PrimeShooterShot(float x, float y, float vx, float vy, boolean hostile, int number) {
             this.x = x;
             this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.hostile = hostile;
+            this.number = number;
         }
     }
 
     private class PrimeShooterView extends View {
+        private static final int LOOT_SHIELD = 4, PICKUP_SHIELD_MS = 4500;
+        private final String[] zoneNames = {"Órbita azul", "Nebulosa", "Cinturão rochoso", "Gigante anelado", "Terra"};
+        private final float[] zoneAnchors = {.78f, .82f, .16f, .035f, .50f};
+        private final ArcadePhase phase = new ArcadePhase(true);
+        private Runnable phaseReady;
         private final android.graphics.Bitmap[] veiculos = carregarVeiculos("airplane", "rocket", "spaceship");
         private final android.graphics.Bitmap espaco = carregarImagemArcade("space.jpg");
+        private final android.graphics.Bitmap[] zonas = {
+            carregarImagemArcade("flight-zone-0.jpg"), carregarImagemArcade("flight-zone-1.jpg"),
+            carregarImagemArcade("flight-zone-2.jpg"), carregarImagemArcade("flight-zone-3.jpg"), espaco
+        };
+        private final android.graphics.Bitmap terra = carregarImagemArcade("earth.png");
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path shipPath = new Path();
         private final RectF panelRect = new RectF();
@@ -7242,17 +7638,28 @@ public class MainActivity extends AppCompatActivity {
         private long nextShotMs;
         private long pulseUntilMs;
         private long boostUntilMs;
+        private long shieldFlashUntilMs;
         private long hitGraceUntilMs;
         private long lastSaveMs;
         private float shipX;
+        private float shipY;
+        private float lastTouchX;
+        private float lastTouchY;
         private int pontuacao;
         private int bestScore;
         private int lives = ArcadeRules.LIVES;
+        private int bossHp = -1, charge, wave;
+        private int parts, weapon, destroyed;
+        private boolean escortsReady;
+        private int[] boss;
+        private boolean autoAdvance;
+        private float bossX, bossY;
+        private long bossStart, bossNextWave, bossBurst = -1;
         private boolean gameOver;
         private boolean running;
         private boolean fireHeld;
-        private float twoFingerStartX;
-        private float twoFingerStartY;
+        private boolean pendingShot;
+        private int pilotPointer = -1;
         private String pulseText = "";
         private int pulseColor = Color.WHITE;
 
@@ -7261,16 +7668,27 @@ public class MainActivity extends AppCompatActivity {
             setFocusable(true);
             setClickable(true);
             setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            setOverScrollMode(OVER_SCROLL_NEVER);
             SharedPreferences prefs = getSharedPreferences(PREFS_PRIME_SHOOTER, MODE_PRIVATE);
             bestScore = prefs.getInt(KEY_PS_BEST_SCORE, 0);
-            reiniciarComPontuacao(prefs.getInt(KEY_PS_LAST_SCORE, 0));
-            lives = Math.max(1, Math.min(ArcadeRules.LIVES, prefs.getInt(KEY_PS_LIVES, ArcadeRules.LIVES)));
-            boostUntilMs = Math.max(0, Math.min(ArcadeRules.SHIELD_MS, prefs.getInt(KEY_PS_SHIELD_MS, 0)));
-        }
-
-        void reiniciarDoZero() {
-            reiniciarComPontuacao(0);
-            salvarProgresso();
+            boolean hasTimedSave = prefs.contains("campaign_boss_hp");
+            reiniciarComPontuacao(hasTimedSave ? prefs.getInt(KEY_PS_LAST_SCORE, 0) : 0);
+            int savedStage = hasTimedSave ? Math.max(0, Math.min(arcadeUnlocked(prefs, true), prefs.getInt("timed_phase_index", 0))) : 0;
+            phase.reset(savedStage, Math.max(0, Math.min(pontuacao, prefs.getInt("timed_phase_base", 0))));
+            phase.elapsed = hasTimedSave ? Math.max(0, Math.min(phase.duration, prefs.getInt("timed_elapsed", 0))) : 0;
+            if (hasTimedSave) {
+                parts = Math.max(0, Math.min(12, prefs.getInt("campaign_parts", 0)));
+                weapon = Math.max(0, Math.min(12, prefs.getInt("campaign_weapon", 0)));
+                destroyed = Math.max(0, prefs.getInt("campaign_destroyed", 0));
+                lives = Math.max(0, Math.min(arcadeMaxLivesNativo(parts), prefs.getInt(KEY_PS_LIVES, ArcadeRules.LIVES)));
+                boostUntilMs = Math.max(0, Math.min(PICKUP_SHIELD_MS, prefs.getInt(KEY_PS_SHIELD_MS, 0)));
+                charge = Math.max(0, Math.min(100, prefs.getInt("campaign_charge", 0)));
+                boss = arcadeBossNativo(phase.index);
+                bossHp = Math.max(-1, Math.min(boss[2], prefs.getInt("campaign_boss_hp", -1)));
+                bossNextWave = 1400;
+                phase.outcome = arcadeFlightOutcomeNativo(lives, bossHp);
+                if (phase.outcome != 0) phase.exitStart = Math.max(0, android.os.SystemClock.uptimeMillis() - 850);
+            }
         }
 
         void salvarProgresso() {
@@ -7284,13 +7702,23 @@ public class MainActivity extends AppCompatActivity {
                     .putInt(KEY_PS_LAST_SCORE, gameOver ? 0 : atual)
                     .putInt(KEY_PS_LIVES, gameOver ? ArcadeRules.LIVES : lives)
                     .putInt(KEY_PS_SHIELD_MS, gameOver ? 0 : (int) Math.max(0, boostUntilMs - playTimeMs))
+                    .putInt("timed_phase_index", phase.index)
+                    .putInt("timed_phase_base", phase.startingScore)
+                    .putInt("timed_elapsed", phase.elapsed)
+                    .putInt("campaign_charge", charge)
+                    .putInt("campaign_parts", parts)
+                    .putInt("campaign_weapon", weapon)
+                    .putInt("campaign_destroyed", destroyed)
+                    .putInt("campaign_boss_hp", bossHp)
                     .apply();
             lastSaveMs = android.os.SystemClock.uptimeMillis();
         }
 
         void pausar() {
             running = false;
+            autoAdvance = false;
             fireHeld = false;
+            pendingShot = false;
             lastFrameMs = 0;
             salvarProgresso();
             invalidate();
@@ -7299,6 +7727,15 @@ public class MainActivity extends AppCompatActivity {
         private void reiniciarComPontuacao(int pontuacaoInicial) {
             itens.clear();
             tiros.clear();
+            bossHp = -1;
+            boss = null;
+            autoAdvance = false;
+            charge = wave = 0;
+            parts = weapon = destroyed = 0;
+            escortsReady = false;
+            bossNextWave = 0;
+            bossStart = 0;
+            bossBurst = -1;
             lastFrameMs = 0;
             playTimeMs = 0;
             previousNumber = 0;
@@ -7306,13 +7743,17 @@ public class MainActivity extends AppCompatActivity {
             nextShotMs = 0;
             pulseUntilMs = 0;
             boostUntilMs = 0;
+            shieldFlashUntilMs = 0;
             hitGraceUntilMs = 0;
             pontuacao = Math.max(0, pontuacaoInicial);
+            phase.reset(0, 0);
             lives = ArcadeRules.LIVES;
             gameOver = false;
             running = false;
             fireHeld = false;
+            pendingShot = false;
             pulseText = "";
+            if (getWidth() > 0) moverNave(getWidth() / 2f, getHeight() - dpUi(ArcadeRules.SHIP_Y));
             invalidate();
         }
 
@@ -7325,28 +7766,47 @@ public class MainActivity extends AppCompatActivity {
         @Override
         protected void onSizeChanged(int w, int h, int oldw, int oldh) {
             super.onSizeChanged(w, h, oldw, oldh);
-            if (shipX <= 0f) {
-                shipX = w / 2f;
+            if (bossHp > 0) {
+                bossX = w / 2f;
+                bossY = Math.min(h * .30f, dpUi(145));
             }
+            moverNave(oldw > 0 ? shipX * w / oldw : w / 2f,
+                oldh > 0 ? shipY * h / oldh : h - dpUi(ArcadeRules.SHIP_Y));
+            protegerFaixaDeVoo(h - dpUi(100));
+        }
+
+        private void protegerFaixaDeVoo(int touchY) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+            int height = Math.min(getHeight(), dpUi(200));
+            int top = Math.max(0, Math.min(getHeight() - height, touchY - height / 2));
+            setSystemGestureExclusionRects(java.util.Collections.singletonList(
+                new android.graphics.Rect(0, top, getWidth(), top + height)));
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (phase.exitStart >= 0) return true;
             if (getParent() != null) {
                 getParent().requestDisallowInterceptTouchEvent(true);
             }
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 if (gameOver) {
-                    reiniciarDoZero();
+                    repetirFase();
                 }
                 if (!running) {
                     running = true;
                     lastFrameMs = 0;
+                    if (phase.elapsed == 0) narrarInicioVoo();
                 }
+                pilotPointer = event.getPointerId(0);
+                protegerFaixaDeVoo(Math.round(event.getY(0)));
             }
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 fireHeld = false;
+                pilotPointer = -1;
+                protegerFaixaDeVoo(getHeight() - dpUi(100));
+                if (action == MotionEvent.ACTION_CANCEL) pendingShot = false;
                 if (getParent() != null) {
                     getParent().requestDisallowInterceptTouchEvent(false);
                 }
@@ -7354,32 +7814,29 @@ public class MainActivity extends AppCompatActivity {
             }
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE
                     || action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_POINTER_UP) {
-                float x = 0;
-                float y = 0;
-                int count = 0;
-                for (int i = 0; i < event.getPointerCount(); i++) {
-                    if (action == MotionEvent.ACTION_POINTER_UP && i == event.getActionIndex()) continue;
-                    x += event.getX(i);
-                    y += event.getY(i);
-                    count++;
+                int lifting = action == MotionEvent.ACTION_POINTER_UP ? event.getActionIndex() : -1;
+                int count = event.getPointerCount() - (lifting >= 0 ? 1 : 0);
+                int pointer = event.findPointerIndex(pilotPointer);
+                if (pointer < 0 || pointer == lifting) {
+                    pointer = lifting == 0 ? 1 : 0;
+                    if (pointer >= event.getPointerCount()) return true;
+                    pilotPointer = event.getPointerId(pointer);
                 }
-                if (count == 0) return true;
-                x /= count;
-                y /= count;
+                float x = event.getX(pointer);
+                float y = event.getY(pointer);
                 if (action != MotionEvent.ACTION_MOVE) {
-                    fireHeld = false;
-                    if (count == 2) {
-                        twoFingerStartX = x;
-                        twoFingerStartY = y;
+                    fireHeld = count == 2;
+                    if (fireHeld && action == MotionEvent.ACTION_POINTER_DOWN) {
+                        pendingShot = true;
+                        atirar(true);
                     }
+                    lastTouchX = x;
+                    lastTouchY = y;
                 }
-                if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_DOWN) {
-                    moverNave(x);
-                }
-                if (action == MotionEvent.ACTION_MOVE && count == 2 && !fireHeld
-                        && Math.hypot(x - twoFingerStartX, y - twoFingerStartY) >= dpUi(4)) {
-                    fireHeld = true;
-                    atirar(true);
+                if (action == MotionEvent.ACTION_MOVE) {
+                    moverNave(shipX + x - lastTouchX, shipY + y - lastTouchY);
+                    lastTouchX = x;
+                    lastTouchY = y;
                 }
             }
             return true;
@@ -7402,19 +7859,50 @@ public class MainActivity extends AppCompatActivity {
             lastFrameMs = now;
 
             if (running && !gameOver) {
+                if (bossHp < 0) {
+                    deltaMs = Math.min(deltaMs, phase.duration - phase.elapsed);
+                    phase.elapsed += (int) deltaMs;
+                }
                 playTimeMs += deltaMs;
                 atualizar(deltaMs / 1000f, now, w, h);
+                if (phase.outcome == 0 && bossHp < 0 && phase.elapsed >= phase.duration) iniciarChefe(now);
+                completarFase(now, false);
             }
 
-            desenharEspaco(canvas, w, h, now);
+            desenharEspaco(canvas, w, h);
             desenharTiros(canvas);
             desenharItens(canvas);
-            desenharNave(canvas, w, h, now);
+            desenharChefe(canvas, now);
+            float departure = phase.exitProgress(now);
+            if (departure < 1 || phase.outcome == ArcadePhase.CRASHED) {
+                canvas.save();
+                if (phase.outcome != ArcadePhase.CRASHED) canvas.translate(0, -(shipY + dpUi(120)) * departure);
+                desenharNave(canvas, w, h, now);
+                canvas.restore();
+            }
             desenharFaixaControle(canvas, w, h);
             desenharPlacar(canvas, w, now);
             desenharPulso(canvas, w, now);
 
-            if (gameOver) {
+            if (phase.exitStart >= 0) {
+                if (departure < 1) postInvalidateOnAnimation();
+                else if (phase.outcome == ArcadePhase.PASSED && phase.index < EARTH_STAGE && autoAdvance) {
+                    if (now - phase.exitStart < 1450) postInvalidateOnAnimation();
+                    else if (!phase.shown) {
+                        phase.shown = true;
+                        post(() -> {
+                            if (!phase.shown || phase.outcome != ArcadePhase.PASSED) return;
+                            if (autoAdvance) avancarFase();
+                            else if (phaseReady != null) phaseReady.run();
+                        });
+                    }
+                }
+                else if (bossBurst >= 0 && now - bossBurst < 1050) postInvalidateOnAnimation();
+                else if (!phase.shown && phaseReady != null) {
+                    phase.shown = true;
+                    post(() -> { if (phase.shown) phaseReady.run(); });
+                }
+            } else if (gameOver) {
                 desenharFim(canvas, w, h);
             } else if (running) {
                 postInvalidateOnAnimation();
@@ -7427,44 +7915,85 @@ public class MainActivity extends AppCompatActivity {
         private void atualizar(float dt, long now, int w, int h) {
             float density = getResources().getDisplayMetrics().density;
 
-            if (fireHeld) {
-                atirar(false);
+            if (fireHeld || pendingShot) {
+                atirar(pendingShot);
             }
 
-            if (playTimeMs >= nextSpawnMs) {
-                int[] spawn = arcadeSpawnNativo(true, pontuacao, primeMatchRandom.nextInt(), previousNumber);
+            if (bossHp > 0) atualizarChefe(w, h);
+            if (bossHp < 0 && playTimeMs >= nextSpawnMs) {
+                int[] spawn = arcadeSpawnNativo(true, phase.pace(), primeMatchRandom.nextInt(), previousNumber);
                 previousNumber = spawn[0];
                 float margem = Math.min(w / 2f, ArcadeRules.SHIP_MARGIN * density);
                 float x = margem + (w - 2 * margem) * spawn[4] / ArcadeRules.LANE_MAX;
-                itens.add(new PrimeShooterItem(x, -ArcadeRules.SPAWN_MARGIN * density,
-                    spawn[2] * density, previousNumber, spawn[1] != 0));
+                PrimeShooterItem item = new PrimeShooterItem(x, -ArcadeRules.SPAWN_MARGIN * density,
+                    spawn[2] * density, previousNumber, spawn[1] != 0);
+                item.role = arcadeEnemyRoleNativo(item.prime, true, phase.index, primeMatchRandom.nextInt());
+                item.nextAttack = playTimeMs + 1200;
+                itens.add(item);
                 nextSpawnMs = playTimeMs + spawn[3];
             }
 
+            resgatarAntesDosTiros(dt, now, h, density);
             for (int i = tiros.size() - 1; i >= 0; i--) {
                 PrimeShooterShot tiro = tiros.get(i);
-                tiro.y -= ArcadeRules.SHOT_SPEED * density * dt;
-                if (tiro.y < -ArcadeRules.SPAWN_MARGIN * density) {
+                tiro.x += tiro.vx * dt;
+                tiro.y += (tiro.hostile ? tiro.vy : -ArcadeRules.SHOT_SPEED * density) * dt;
+                if (tiro.y < -dpUi(36) || tiro.y > h + dpUi(36) || tiro.x < -dpUi(36) || tiro.x > w + dpUi(36)) {
                     tiros.remove(i);
+                    continue;
+                }
+                if (tiro.hostile) {
+                    if (playTimeMs < boostUntilMs && arcadeShieldInterceptsNativo(
+                            (tiro.x - shipX) / density, (tiro.y - shipY) / density)) {
+                        tiros.remove(i);
+                        shieldFlashUntilMs = playTimeMs + 200;
+                        mostrarPulso("Tiro bloqueado", 0xFFBAE6FD, now);
+                        tocarPrimeMatchSom(primeMatchSoundPower);
+                    } else if (Math.abs(tiro.x - shipX) < dpUi(24) && Math.abs(tiro.y - shipY) < dpUi(26)) {
+                        tiros.remove(i);
+                        sofrerImpacto(now);
+                        if (lives <= 0) return;
+                    }
+                    continue;
+                }
+                boolean hitEscort = false;
+                for (int j = itens.size() - 1; j >= 0; j--) {
+                    PrimeShooterItem item = itens.get(j);
+                    if (!Float.isNaN(item.escortOffset) && Math.abs(tiro.x - item.x) < dpUi(25)
+                            && Math.abs(tiro.y - item.y) < dpUi(25)) {
+                        itens.remove(j);
+                        tiros.remove(i);
+                        destruirInimigo(item, now);
+                        hitEscort = true;
+                        break;
+                    }
+                }
+                if (hitEscort) continue;
+                if (bossHp > 0 && Math.abs(tiro.x - bossX) < dpUi(53) * bossScale()
+                        && Math.abs(tiro.y - bossY) < dpUi(34) * bossScale()) {
+                    tiros.remove(i);
+                    if (bossGuarded() || Math.abs(tiro.x - bossX) >= dpUi(22) * bossScale()) continue;
+                    int previousHp = bossHp;
+                    bossHp = Math.max(0, bossHp - arcadeUpgradeDamageNativo(charge, weapon));
+                    soltarBonusDoChefe(previousHp, bossHp);
+                    if (bossHp == 0) {
+                        bossBurst = now;
+                        tocarPrimeMatchSom(primeMatchSoundComposite);
+                        completarFase(now, false);
+                        return;
+                    }
                     continue;
                 }
 
                 for (int j = itens.size() - 1; j >= 0; j--) {
                     PrimeShooterItem item = itens.get(j);
+                    if (item.loot != 0 || !Float.isNaN(item.escortOffset)) continue;
                     int box = item.prime ? ArcadeRules.SPACE_PRIME : ArcadeRules.SPACE_COMPOSITE;
                     if (arcadeCollidesNativo(ArcadeRules.SHOT_BOX, tiro.x / density, (h - tiro.y) / density,
                         box, item.x / density, (h - item.y) / density)) {
-                        if (item.prime) {
-                            mostrarPulso("Primo perdido", Color.parseColor("#FCA5A5"), now);
-                            tocarPrimeMatchSom(primeMatchSoundComposite);
-                        } else {
-                            int bonus = arcadePoints(item.value, item.prime, false);
-                            pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
-                            mostrarPulso("Composto " + item.value + "  +" + bonus, Color.parseColor("#93C5FD"), now);
-                            tocarPrimeMatchSom(primeMatchSoundCombo);
-                        }
                         itens.remove(j);
                         tiros.remove(i);
+                        destruirInimigo(item, now);
                         break;
                     }
                 }
@@ -7472,38 +8001,24 @@ public class MainActivity extends AppCompatActivity {
 
             for (int i = itens.size() - 1; i >= 0; i--) {
                 PrimeShooterItem item = itens.get(i);
+                if (!Float.isNaN(item.escortOffset)) continue;
                 item.y += item.speed * dt;
+                if (item.role == ARCADE_ARMED && playTimeMs >= item.nextAttack && item.y > dpUi(55)
+                        && item.y < shipY - dpUi(84)) {
+                    tiros.add(new PrimeShooterShot(item.x, item.y + dpUi(21), 0, 260 * density, true, item.value));
+                    item.nextAttack = playTimeMs + 1600;
+                }
                 if (item.y > h + ArcadeRules.SPAWN_MARGIN * density) {
                     itens.remove(i);
                     continue;
                 }
 
-                int box = item.prime ? ArcadeRules.SPACE_PRIME : ArcadeRules.SPACE_COMPOSITE;
-                if (arcadeCollidesNativo(ArcadeRules.SHIP_BOX, shipX / density, ArcadeRules.SHIP_Y,
-                    box, item.x / density, (h - item.y) / density)) {
-                    int evento = arcadeFlightContactNativo(item.prime,
-                        playTimeMs < boostUntilMs, playTimeMs < hitGraceUntilMs);
-                    if (evento == ArcadeRules.RESCUE) {
-                        int bonus = arcadePoints(item.value, item.prime, true);
-                        pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
-                        boostUntilMs = playTimeMs + ArcadeRules.SHIELD_MS;
-                        mostrarPulso("Resgate " + item.value + "  +" + bonus, Color.parseColor("#A7F3D0"), now);
-                        tocarPrimeMatchSom(primeMatchSoundPrime);
-                    } else if (evento == ArcadeRules.SHIELD) {
-                        mostrarPulso("Escudo ativo", Color.parseColor("#BAE6FD"), now);
-                        tocarPrimeMatchSom(primeMatchSoundPower);
-                    } else if (evento == ArcadeRules.DAMAGE) {
-                        lives--;
-                        hitGraceUntilMs = playTimeMs + ArcadeRules.HIT_GRACE_MS;
-                        mostrarPulso("Dano", Color.parseColor("#FDBA74"), now);
-                        tocarPrimeMatchSom(primeMatchSoundComposite);
-                        if (lives <= 0) {
-                            encerrarVoo(now);
-                            itens.remove(i);
-                            return;
-                        }
-                    }
+                if (item.prime || item.loot != 0) continue;
+                if (arcadeCollidesNativo(ArcadeRules.SHIP_BOX, shipX / density, (h - shipY) / density,
+                    ArcadeRules.SPACE_COMPOSITE, item.x / density, (h - item.y) / density)) {
                     itens.remove(i);
+                    sofrerImpacto(now);
+                    if (lives <= 0) return;
                 }
             }
 
@@ -7512,9 +8027,82 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        private void moverNave(float x) {
+        private void resgatarAntesDosTiros(float dt, long now, int h, float density) {
+            for (int i = itens.size() - 1; i >= 0; i--) {
+                PrimeShooterItem item = itens.get(i);
+                if (!item.prime && item.loot == 0) continue;
+                int box = item.prime ? ArcadeRules.SPACE_PRIME : ArcadeRules.SPACE_COMPOSITE;
+                float nextY = item.y + item.speed * dt;
+                if (!arcadeCollidesNativo(ArcadeRules.SHIP_BOX, shipX / density, (h - shipY) / density,
+                    box, item.x / density, (h - nextY) / density)) continue;
+                itens.remove(i);
+                if (item.loot != 0) {
+                    recolherBonus(item.loot, now);
+                } else {
+                    int bonus = arcadePoints(item.value, true, true);
+                    pontuacao = arcadeAddScoreNativo(pontuacao, bonus);
+                    boostUntilMs = Math.max(boostUntilMs, playTimeMs + ArcadeRules.SHIELD_MS);
+                    charge = arcadeAddChargeNativo(charge, item.value);
+                    mostrarPulso("Resgate " + item.value + "  +" + bonus, 0xFFA7F3D0, now);
+                    tocarPrimeMatchSom(primeMatchSoundPrime);
+                }
+            }
+        }
+
+        private void completarFase(long now, boolean crashed) {
+            if (!phase.concludeWith(now, pontuacao, arcadeFlightOutcomeNativo(crashed ? 0 : lives, bossHp), arcadePrefs(true))) return;
+            running = false;
+            fireHeld = false;
+            if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+            salvarProgresso();
+            if (phase.outcome == ArcadePhase.PASSED) {
+                autoAdvance = true;
+                if (phase.index < BONUS_STAGE) guardarEquipamento(phase.index + 1);
+                tocarPrimeMatchSom(primeMatchSoundVictory);
+                mostrarPulso("Fase " + (phase.index + 1) + " concluída", 0xFFFFDB91, now);
+            }
+        }
+
+        private void avancarFase() {
+            if (phase.outcome != ArcadePhase.PASSED || phase.index >= BONUS_STAGE) return;
+            iniciarFase(phase.index + 1, pontuacao);
+        }
+
+        private void repetirFase() {
+            iniciarFase(phase.index, phase.startingScore);
+        }
+
+        private void iniciarFaseEscolhida(int stage) {
+            iniciarFase(stage, 0);
+            running = false;
+        }
+
+        private void iniciarFase(int stage, int baseScore) {
+            reiniciarComPontuacao(baseScore);
+            phase.reset(stage, baseScore);
+            SharedPreferences prefs = arcadePrefs(true);
+            parts = prefs.getInt("kit_parts_" + stage, 0);
+            weapon = prefs.getInt("kit_weapon_" + stage, 0);
+            lives = prefs.getInt("kit_lives_" + stage, ArcadeRules.LIVES);
+            running = true;
+            narrarInicioVoo();
+            salvarProgresso();
+            invalidate();
+        }
+
+        private void narrarInicioVoo() {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (phase.index == 0) mostrarPulso("Defesa digital da Terra", 0xFF93C5FD, now);
+            if (phase.index == EARTH_STAGE) mostrarPulso("Terra  ·  Defesa final", 0xFF93C5FD, now);
+        }
+
+        private void moverNave(float x, float y) {
             float margem = Math.min(getWidth() / 2f, dpUi(ArcadeRules.SHIP_MARGIN));
             shipX = Math.max(margem, Math.min(getWidth() - margem, x));
+            float top = Math.min(getHeight() / 2f, dpUi(92));
+            if (bossHp > 0) top = Math.max(top, Math.min(getHeight() * .58f, bossY + dpUi(55)));
+            float bottom = Math.max(top, getHeight() - dpUi(ArcadeRules.CONTROL_HEIGHT + 36));
+            shipY = Math.max(top, Math.min(bottom, y));
             invalidate();
         }
 
@@ -7522,8 +8110,9 @@ public class MainActivity extends AppCompatActivity {
             if (playTimeMs < nextShotMs || gameOver || !running) {
                 return;
             }
-            tiros.add(new PrimeShooterShot(shipX, getHeight() - dpUi(ArcadeRules.SHIP_Y + ArcadeRules.SHOT_OFFSET)));
-            nextShotMs = playTimeMs + ArcadeRules.SHOT_MS;
+            tiros.add(new PrimeShooterShot(shipX, shipY - dpUi(ArcadeRules.SHOT_OFFSET)));
+            pendingShot = false;
+            nextShotMs = playTimeMs + Math.max(105, ArcadeRules.SHOT_MS - 6 * weapon);
             if (tocarSom) {
                 tocarPrimeMatchSom(primeMatchSoundTap);
             }
@@ -7542,21 +8131,243 @@ public class MainActivity extends AppCompatActivity {
             pulseUntilMs = now + 950;
         }
 
-        private void desenharEspaco(Canvas canvas, int w, int h, long now) {
-            if (desenharFotoArcade(canvas, espaco, w, h,
-                arcadeVehicle(arcadeStage(pontuacao, true)), paint)) return;
-            paint.setShader(new LinearGradient(0, 0, 0, h,
-                    new int[]{Color.parseColor("#080F2E"), Color.parseColor("#1E1B4B"), Color.parseColor("#312E81")},
-                    null,
-                    Shader.TileMode.CLAMP));
-            canvas.drawRoundRect(new RectF(0, 0, w, h), dpUi(18), dpUi(18), paint);
-            paint.setShader(null);
-            paint.setColor(withAlpha(Color.WHITE, 160));
+        private String nomeChefe() {
+            return "M" + (phase.index + 1) + " · " + boss[1] + (phase.index >= 4 ? "∞" : "");
+        }
+
+        private float bossScale() { return phase.flightStage[1] / 100f; }
+
+        private boolean bossGuarded() {
+            if (bossHp <= 0) return false;
+            for (PrimeShooterItem item : itens) {
+                if (!Float.isNaN(item.escortOffset)) return true;
+            }
+            return Math.max(0, playTimeMs - bossStart) % phase.flightStage[3] < phase.flightStage[4];
+        }
+
+        private float zoneBlend() {
+            return Math.max(0, Math.min(1, (phase.elapsed / (float) phase.duration - .44f) / .17f));
+        }
+
+        private void guardarEquipamento(int stage) {
+            SharedPreferences prefs = arcadePrefs(true);
+            int bestParts = Math.max(parts, prefs.getInt("kit_parts_" + stage, 0));
+            prefs.edit().putInt("kit_parts_" + stage, bestParts)
+                .putInt("kit_weapon_" + stage, Math.max(weapon, prefs.getInt("kit_weapon_" + stage, 0)))
+                .putInt("kit_lives_" + stage, Math.min(arcadeMaxLivesNativo(bestParts),
+                    Math.max(lives, prefs.getInt("kit_lives_" + stage, 0))))
+                .apply();
+        }
+
+        private void destruirInimigo(PrimeShooterItem item, long now) {
+            if (item.prime) {
+                mostrarPulso("Primo perdido", 0xFFFCA5A5, now);
+                tocarPrimeMatchSom(primeMatchSoundComposite);
+                return;
+            }
+            int points = arcadePoints(item.value, false, false);
+            pontuacao = arcadeAddScoreNativo(pontuacao, points);
+            mostrarPulso("Composto " + item.value + "  +" + points, 0xFF93C5FD, now);
+            tocarPrimeMatchSom(primeMatchSoundCombo);
+            if (destroyed < Integer.MAX_VALUE) destroyed++;
+            int kind = arcadeFlightLootNativo(phase.index, destroyed);
+            if (kind != 0) {
+                PrimeShooterItem pickup = new PrimeShooterItem(item.x, item.y, dpUi(82), 0, false);
+                pickup.loot = kind;
+                itens.add(pickup);
+            }
+        }
+
+        private void soltarBonusDoChefe(int before, int after) {
+            int drops = arcadeBossDropsNativo(before, after, boss[2]);
+            for (int mark = 0; mark < 3; mark++) {
+                if ((drops & (1 << mark)) == 0) continue;
+                float x = Math.max(dpUi(22), Math.min(getWidth() - dpUi(22), bossX + dpUi(32) * (mark - 1)));
+                PrimeShooterItem pickup = new PrimeShooterItem(x, bossY + dpUi(52) * bossScale(), dpUi(112), 0, false);
+                pickup.loot = mark == 1 ? 1 : LOOT_SHIELD;
+                itens.add(pickup);
+            }
+        }
+
+        private void recolherBonus(int kind, long now) {
+            String label;
+            if (kind == LOOT_SHIELD) {
+                boostUntilMs = Math.max(boostUntilMs, playTimeMs + PICKUP_SHIELD_MS);
+                label = "Escudo reforçado";
+            } else if (kind == 1) {
+                lives = Math.min(arcadeMaxLivesNativo(parts), lives + 1);
+                label = "Vidas: " + lives;
+            } else if (kind == 2) {
+                parts = Math.min(12, parts + 1);
+                label = "Peças: " + parts;
+            } else {
+                weapon = Math.min(12, weapon + 1);
+                label = "Arma: nível " + weapon;
+            }
+            mostrarPulso(label, 0xFFA7F3D0, now);
+            tocarPrimeMatchSom(primeMatchSoundPower);
+            salvarProgresso();
+        }
+
+        private void iniciarChefe(long now) {
+            boss = arcadeBossNativo(phase.index);
+            bossHp = boss[2];
+            bossStart = playTimeMs;
+            bossNextWave = playTimeMs + 1450;
+            bossX = getWidth() / 2f;
+            bossY = Math.min(getHeight() * .30f, dpUi(145));
+            itens.clear();
+            tiros.clear();
+            moverNave(shipX, shipY);
+            mostrarPulso(nomeChefe(), 0xFFFF9C86, now);
+            salvarProgresso();
+        }
+
+        private void atualizarChefe(int w, int h) {
+            float edge = Math.min(w / 2f, dpUi(57) * bossScale());
+            float orbit = (float) (w * (.50 + .27 * Math.sin(playTimeMs / 1320.0)));
+            bossX = Math.max(edge, Math.min(w - edge, orbit));
+            bossY = Math.min(h * .30f, dpUi(145));
+            if (!escortsReady) {
+                escortsReady = true;
+                int count = phase.flightStage[2];
+                for (int i = 0; i < count; i++) {
+                    PrimeShooterItem escort = new PrimeShooterItem(bossX, bossY, 0, 4 + 2 * i, false);
+                    escort.escortOffset = i - (count - 1) / 2f;
+                    escort.role = ARCADE_ARMED;
+                    escort.nextAttack = playTimeMs + 1600 + 380 * i;
+                    itens.add(escort);
+                }
+            }
+            for (PrimeShooterItem escort : itens) {
+                if (Float.isNaN(escort.escortOffset)) continue;
+                escort.x = Math.max(dpUi(19), Math.min(w - dpUi(19), bossX + escort.escortOffset * dpUi(54)
+                    + (float) Math.sin(playTimeMs / 435.0 + escort.escortOffset) * dpUi(22)));
+                escort.y = bossY + dpUi(52) * bossScale() + dpUi(15) + Math.abs(escort.escortOffset) * dpUi(8);
+                if (playTimeMs >= escort.nextAttack) {
+                    float aim = Math.max(-dpUi(110), Math.min(dpUi(110), (shipX - escort.x) * .7f));
+                    tiros.add(new PrimeShooterShot(escort.x, escort.y, aim, dpUi(245), true, escort.value));
+                    escort.nextAttack = playTimeMs + Math.max(1150, 2250 - phase.index * 18L);
+                }
+            }
+            if (playTimeMs < bossNextWave) return;
+            float speed = dpUi(230 + Math.min(phase.index, 45) * 2);
+            int compound = new int[]{4, 6, 8, 9, 10, 12}[wave % 6];
+            if (boss[3] == 1) {
+                for (int lane = 0; lane < 4; lane++) {
+                    if (lane != wave % 4) tiros.add(new PrimeShooterShot(w * (lane + .5f) / 4f, bossY, 0, speed, true, compound));
+                }
+            } else {
+                float aim = boss[3] == 2 || (wave & 1) == 1
+                    ? Math.max(-dpUi(135), Math.min(dpUi(135), (shipX - bossX) * 1.2f)) : 0;
+                for (int i = -1; i <= 1; i++) {
+                    tiros.add(new PrimeShooterShot(bossX, bossY + dpUi(22), aim + dpUi(88) * i, speed, true, compound));
+                }
+            }
+            wave++;
+            bossNextWave = playTimeMs + Math.max(800, 1550 - phase.index * 13L);
+        }
+
+        private void sofrerImpacto(long now) {
+            int evento = arcadeFlightContactNativo(false, playTimeMs < boostUntilMs, playTimeMs < hitGraceUntilMs);
+            if (evento == ArcadeRules.SHIELD) {
+                mostrarPulso("Escudo ativo", 0xFFBAE6FD, now);
+                tocarPrimeMatchSom(primeMatchSoundPower);
+            } else if (evento == ArcadeRules.DAMAGE) {
+                lives--;
+                hitGraceUntilMs = playTimeMs + ArcadeRules.HIT_GRACE_MS;
+                mostrarPulso("Dano", 0xFFFDBA74, now);
+                tocarPrimeMatchSom(primeMatchSoundComposite);
+                if (lives <= 0) completarFase(now, true);
+            }
+        }
+
+        private void desenharChefe(Canvas canvas, long now) {
+            if (bossHp > 0) {
+                if (bossY <= 0) return;
+                canvas.save();
+                canvas.scale(bossScale(), bossScale(), bossX, bossY);
+                boolean guarded = bossGuarded();
+                paint.setColor(guarded ? 0x5066DBFF : bossNextWave - playTimeMs < 320 ? 0xAAFF724E : 0x50FB573D);
+                canvas.drawOval(bossX - dpUi(57), bossY - dpUi(39), bossX + dpUi(57), bossY + dpUi(39), paint);
+                if (guarded) {
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dpUi(2));
+                    paint.setColor(0xFF78DFFF);
+                    canvas.drawOval(bossX - dpUi(57), bossY - dpUi(39), bossX + dpUi(57), bossY + dpUi(39), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(0xFF78DFFF);
+                }
+                canvas.save();
+                canvas.rotate(180, bossX, bossY);
+                paint.setColor(Color.WHITE);
+                desenharVeiculo(canvas, veiculos[veiculos.length - 1],
+                    new RectF(bossX - dpUi(47), bossY - dpUi(40), bossX + dpUi(47), bossY + dpUi(40)), paint);
+                canvas.restore();
+                if (!guarded) {
+                    paint.setColor(0x5CFFB15E);
+                    canvas.drawCircle(bossX, bossY, dpUi(19), paint);
+                    paint.setColor(0xFFFFD384);
+                    canvas.drawCircle(bossX, bossY, dpUi(6), paint);
+                }
+                paint.setColor(0xFFA52F46);
+                canvas.drawRoundRect(bossX - dpUi(43), bossY + dpUi(45), bossX + dpUi(43), bossY + dpUi(51), dpUi(3), dpUi(3), paint);
+                paint.setColor(guarded ? 0xFF78DFFF : 0xFFFFCE78);
+                canvas.drawRoundRect(bossX - dpUi(43), bossY + dpUi(45), bossX - dpUi(43) + dpUi(86) * bossHp / (float) boss[2],
+                    bossY + dpUi(51), dpUi(3), dpUi(3), paint);
+                canvas.restore();
+            } else if (bossBurst >= 0 && now - bossBurst < 1050) {
+                float p = (now - bossBurst) / 1050f;
+                paint.setColor(withAlpha(0xFFFFAD4D, (int) ((1 - p) * 220)));
+                paint.setStrokeWidth(dpUi(3));
+                for (int i = 0; i < 22; i++) {
+                    double angle = i * Math.PI * 2 / 22;
+                    float dx = (float) Math.cos(angle), dy = (float) Math.sin(angle);
+                    float span = dpUi(35 + i % 5 * 12) * p;
+                    canvas.drawLine(bossX + dx * span, bossY + dy * span,
+                        bossX + dx * (span + dpUi(26)), bossY + dy * (span + dpUi(26)), paint);
+                }
+                paint.setColor(withAlpha(0xFFFFE0AA, (int) ((1 - p) * 190)));
+                canvas.drawCircle(bossX, bossY, dpUi(14) * (1 + p * 3), paint);
+            }
+        }
+
+        private void desenharEspaco(Canvas canvas, int w, int h) {
+            canvas.drawColor(0xFF090F18);
+            float blend = zoneBlend();
+            desenharZona(canvas, w, h, phase.flightStage[5], 255);
+            if (phase.flightStage[6] != phase.flightStage[5] && blend > 0) {
+                desenharZona(canvas, w, h, phase.flightStage[6], (int) (255 * blend));
+            }
+            if (terra != null && phase.index == EARTH_STAGE) {
+                float r = w * .65f;
+                float centerX = w * .67f;
+                float centerY = h * .58f;
+                paint.setAlpha(215);
+                canvas.drawBitmap(terra, null, new RectF(centerX - r, centerY - r, centerX + r, centerY + r), paint);
+                paint.setAlpha(255);
+            }
             for (int i = 0; i < 34; i++) {
                 float x = (i * 73) % Math.max(1, w);
-                float y = ((i * 127) + (now / (18 + i % 7))) % Math.max(1, h);
-                canvas.drawCircle(x, y, (i % 3) + 1, paint);
+                float y = ((i * 127) + (playTimeMs / (7 + i % 13))) % Math.max(1, h);
+                paint.setColor(withAlpha(Color.WHITE, 70 + i % 3 * 38));
+                canvas.drawCircle(x, y, dpUi(1 + i % 2), paint);
             }
+        }
+
+        private void desenharZona(Canvas canvas, int w, int h, int zone, int alpha) {
+            android.graphics.Bitmap image = zonas[zone] == null ? espaco : zonas[zone];
+            if (image == null) return;
+            float scale = 1.12f * Math.max(w / (float) image.getWidth(), h / (float) image.getHeight());
+            float width = image.getWidth() * scale, height = image.getHeight() * scale;
+            float anchor = zoneAnchors[zone];
+            float drift = .42f * Math.min(anchor, 1 - anchor);
+            float x = (w - width) * anchor + (float) Math.sin(playTimeMs / 18000.0) * (width - w) * drift;
+            float y = (h - height) * .5f + (float) Math.sin(playTimeMs / 23000.0) * (height - h) * .24f;
+            paint.setColor(Color.WHITE);
+            paint.setAlpha(alpha);
+            canvas.drawBitmap(image, null, new RectF(x, y, x + width, y + height), paint);
+            paint.setAlpha(255);
         }
 
         private void desenharFaixaControle(Canvas canvas, int w, int h) {
@@ -7575,6 +8386,17 @@ public class MainActivity extends AppCompatActivity {
             paint.setColor(Color.parseColor("#FDE68A"));
             paint.setShadowLayer(dpUi(14), 0, 0, Color.parseColor("#FACC15"));
             for (PrimeShooterShot tiro : tiros) {
+                if (tiro.hostile) {
+                    paint.clearShadowLayer();
+                    paint.setColor(0xFFFF724E);
+                    canvas.drawCircle(tiro.x, tiro.y, dpUi(10), paint);
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    paint.setTextSize(dpUi(11));
+                    paint.setColor(0xFF230914);
+                    canvas.drawText(String.valueOf(tiro.number), tiro.x, tiro.y + dpUi(4), paint);
+                    paint.setColor(0xFFFDE68A);
+                    continue;
+                }
                 canvas.drawRoundRect(new RectF(tiro.x - dpUi(6), tiro.y - dpUi(30), tiro.x + dpUi(6), tiro.y + dpUi(10)), dpUi(6), dpUi(6), paint);
                 paint.setColor(Color.WHITE);
                 canvas.drawRoundRect(new RectF(tiro.x - dpUi(2), tiro.y - dpUi(27), tiro.x + dpUi(2), tiro.y + dpUi(7)), dpUi(3), dpUi(3), paint);
@@ -7585,8 +8407,24 @@ public class MainActivity extends AppCompatActivity {
 
         private void desenharItens(Canvas canvas) {
             for (PrimeShooterItem item : itens) {
-                int cor = item.prime ? Color.parseColor("#34D399") : Color.parseColor("#F87171");
-                float raio = item.prime ? dpUi(22) : dpUi(20);
+                int cor = item.loot == LOOT_SHIELD ? 0xFF147C9E : item.loot == 1 ? 0xFF137A62 :
+                    item.loot != 0 ? 0xFF2765A1 : item.prime ? 0xFF137A62 : 0xFF9D334D;
+                float raio = !Float.isNaN(item.escortOffset) ? dpUi(16) : item.prime ? dpUi(22) : dpUi(20);
+                if (!Float.isNaN(item.escortOffset)) {
+                    canvas.save();
+                    canvas.rotate(180, item.x, item.y);
+                    paint.setColor(Color.WHITE);
+                    desenharVeiculo(canvas, veiculos[2],
+                        new RectF(item.x - dpUi(27), item.y - dpUi(23), item.x + dpUi(27), item.y + dpUi(23)), paint);
+                    canvas.restore();
+                }
+                if (item.role == ARCADE_ARMED) {
+                    paint.setColor(0xFFFFAD62);
+                    paint.setStrokeWidth(dpUi(2));
+                    paint.setStyle(Paint.Style.STROKE);
+                    canvas.drawCircle(item.x, item.y, raio + dpUi(5), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                }
                 paint.setColor(withAlpha(Color.BLACK, 62));
                 canvas.drawCircle(item.x + dpUi(3), item.y + dpUi(4), raio, paint);
                 paint.setColor(cor);
@@ -7598,15 +8436,17 @@ public class MainActivity extends AppCompatActivity {
                 paint.setColor(Color.WHITE);
                 paint.setTextAlign(Paint.Align.CENTER);
                 paint.setTypeface(Typeface.DEFAULT_BOLD);
-                paint.setTextSize(dpUi(15));
+                paint.setTextSize(dpUi(item.loot == 0 ? 15 : item.loot == LOOT_SHIELD ? 9 : 11));
                 Paint.FontMetrics fm = paint.getFontMetrics();
-                canvas.drawText(String.valueOf(item.value), item.x, item.y - (fm.ascent + fm.descent) / 2f, paint);
+                canvas.drawText(item.loot == LOOT_SHIELD ? "ESCUDO" : item.loot == 1 ? "+1" :
+                    item.loot == 2 ? "PEÇA" : item.loot == 3 ? "ARMA" : String.valueOf(item.value),
+                    item.x, item.y - (fm.ascent + fm.descent) / 2f, paint);
                 paint.setTypeface(Typeface.DEFAULT);
             }
         }
 
         private void desenharNave(Canvas canvas, int w, int h, long now) {
-            float baseY = h - dpUi(ArcadeRules.SHIP_Y);
+            float baseY = shipY;
             float size = dpUi(34);
             boolean boost = playTimeMs < boostUntilMs;
             paint.setColor(withAlpha(Color.BLACK, 75));
@@ -7614,9 +8454,10 @@ public class MainActivity extends AppCompatActivity {
             if (!gameOver) desenharEscapeArcade(canvas, shipX, baseY + dpUi(30), now, true, paint);
 
             paint.setColor(Color.WHITE);
-            int tier = arcadeVehicle(arcadeStage(pontuacao, true));
+            int tier = arcadeVehicle(phase.index);
+            float hull = 1 + parts * .012f;
             if (!desenharVeiculo(canvas, veiculos[tier],
-                new RectF(shipX - dpUi(36), baseY - dpUi(43), shipX + dpUi(36), baseY + dpUi(29)), paint)) {
+                new RectF(shipX - dpUi(36) * hull, baseY - dpUi(43) * hull, shipX + dpUi(36) * hull, baseY + dpUi(29) * hull), paint)) {
                 shipPath.reset();
                 shipPath.moveTo(shipX, baseY - size);
                 shipPath.lineTo(shipX - size * 0.82f, baseY + size * 0.72f);
@@ -7628,16 +8469,17 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (boost) {
+                boolean hit = playTimeMs < shieldFlashUntilMs;
                 paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(dpUi(2));
-                paint.setColor(withAlpha(Color.parseColor("#A7F3D0"), 190));
+                paint.setStrokeWidth(dpUi(hit ? 4 : 2));
+                paint.setColor(hit ? 0xFFE1FAFF : 0xBEA7F3D0);
                 canvas.drawCircle(shipX, baseY, dpUi(44), paint);
                 paint.setStyle(Paint.Style.FILL);
             }
         }
 
         private void desenharPlacar(Canvas canvas, int w, long now) {
-            int setor = 1 + arcadeStage(pontuacao, true);
+            int setor = 1 + phase.index;
             panelRect.set(dpUi(10), dpUi(10), w - dpUi(10), dpUi(54));
             paint.setColor(withAlpha(Color.BLACK, 118));
             canvas.drawRoundRect(panelRect, dpUi(12), dpUi(12), paint);
@@ -7647,18 +8489,22 @@ public class MainActivity extends AppCompatActivity {
             paint.setColor(Color.WHITE);
             Paint.FontMetrics fm = paint.getFontMetrics();
             float textY = panelRect.centerY() - (fm.ascent + fm.descent) / 2f;
-            canvas.drawText("Pontos " + formatarPontuacaoArcade(pontuacao), dpUi(22), textY, paint);
+            canvas.drawText("Pontos " + formatarPontuacaoArcade(phase.points(pontuacao)), dpUi(22), textY, paint);
             paint.setTextAlign(Paint.Align.CENTER);
             canvas.drawText("Setor " + setor, w / 2f, textY, paint);
             paint.setTextAlign(Paint.Align.RIGHT);
             canvas.drawText("Vidas " + lives, w - dpUi(22), textY, paint);
             paint.setTypeface(Typeface.DEFAULT);
 
-            if (playTimeMs < boostUntilMs) {
+            {
                 paint.setColor(Color.parseColor("#A7F3D0"));
                 paint.setTextSize(dpUi(11));
                 paint.setTextAlign(Paint.Align.CENTER);
-                canvas.drawText("Escudo", w / 2f, dpUi(76), paint);
+                String sector = bossHp >= 0 && boss != null ? nomeChefe() + (bossGuarded() ? " · Blindado" : "")
+                    : zoneNames[phase.flightStage[zoneBlend() >= .5f ? 6 : 5]];
+                String meta = sector + " · Carga " + charge + "% · Arma " + weapon;
+                String escudo = playTimeMs < boostUntilMs ? (meta.isEmpty() ? "Escudo" : "  •  Escudo") : "";
+                canvas.drawText(meta + escudo, w / 2f, dpUi(76), paint);
             }
         }
 
@@ -11161,7 +12007,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Botão voltar - usar a mesma função do botão físico de voltar
         Button btnVoltar = criarBotaoModerno("← Voltar ao Menu", Color.parseColor("#757575"), Color.parseColor("#616161"));
-        btnVoltar.setOnClickListener(v -> onBackPressed());
+        btnVoltar.setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
         upgradeLayout.addView(btnVoltar);
 
         contentContainer.addView(upgradeLayout);
@@ -11194,7 +12040,7 @@ public class MainActivity extends AppCompatActivity {
         aplicarEstadoPremium(true);
 
         // Voltar ao menu usando a mesma função do botão físico de voltar
-        onBackPressed();
+        getOnBackPressedDispatcher().onBackPressed();
 
         // Mostrar confirmação
         Toast.makeText(this, "🎉 PrimeProFast Premium ativado!", Toast.LENGTH_LONG).show();
@@ -11343,7 +12189,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         Button btnVoltar = criarBotaoModerno("← Voltar ao Menu", Color.parseColor("#757575"), Color.parseColor("#616161"));
-        btnVoltar.setOnClickListener(v -> onBackPressed());
+        btnVoltar.setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
         statsLayout.addView(btnVoltar);
 
         contentContainer.addView(statsLayout);
@@ -11475,7 +12321,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Botão voltar
         Button btnVoltar = criarBotaoModerno("← Voltar ao Menu", Color.parseColor("#757575"), Color.parseColor("#616161"));
-        btnVoltar.setOnClickListener(v -> onBackPressed());
+        btnVoltar.setOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
         containerInterno.addView(btnVoltar);
 
         // Adicionar container interno ao ScrollView

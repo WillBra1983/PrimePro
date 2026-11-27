@@ -7,11 +7,13 @@ private struct MenuCard: Identifiable {
     let emoji: String
     let description: String
     let destination: () -> AnyView
+    var isArcade: Bool { title == "Corrida Prima" || title == "Resgate Espacial" }
 }
 
 struct MenuView: View {
     @EnvironmentObject private var appState: AppState
     @State private var selectedGuide: MenuCard?
+    @State private var selectedArcade: MenuCard?
 
     private var cards: [MenuCard] {
         [
@@ -25,7 +27,7 @@ struct MenuView: View {
             MenuCard(title: "Teste de Primalidade", emoji: "🔍", description: "Analise inteiros e expressões.") { AnyView(PrimeTestView()) },
             MenuCard(title: "Estatísticas", emoji: "📈", description: "Conte e compare a distribuição dos primos.") { AnyView(StatisticsView()) },
             MenuCard(title: "Jogo dos Primos", emoji: "🎯", description: "Combine peças e forme somas primas.") { AnyView(PrimeMatchView()) },
-            MenuCard(title: "Corrida Prima", emoji: "🏃", description: "Pule compostos e capture primos.") { AnyView(PrimeArcadeView(mode: .runner)) },
+            MenuCard(title: "Corrida Prima", emoji: "🚗", description: "Desvie dos compostos e acerte os primos.") { AnyView(PrimeArcadeView(mode: .runner)) },
             MenuCard(title: "Resgate Espacial", emoji: "🚀", description: "Atire em compostos e resgate primos.") { AnyView(PrimeArcadeView(mode: .shooter)) }
         ]
     }
@@ -35,19 +37,14 @@ struct MenuView: View {
             LazyVStack(spacing: 12) {
                 ForEach(cards) { card in
                     HStack(spacing: 4) {
-                        NavigationLink {
-                            card.destination()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(card.emoji).font(.largeTitle)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(card.title).font(.headline)
-                                    Text(card.description).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer(minLength: 0)
+                        Group {
+                            if card.isArcade {
+                                Button { selectedArcade = card } label: { cardLabel(card) }
+                            } else {
+                                NavigationLink {
+                                    card.destination()
+                                } label: { cardLabel(card) }
                             }
-                            .padding(12)
-                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         Button {
@@ -66,6 +63,10 @@ struct MenuView: View {
             .padding()
         }
         .background(PPFTheme.background(appState.darkMode))
+        .fullScreenCover(item: $selectedArcade) { card in
+            NavigationStack { card.destination() }
+                .interactiveDismissDisabled()
+        }
         .sheet(item: $selectedGuide) { card in
             NavigationStack {
                 Group {
@@ -80,6 +81,19 @@ struct MenuView: View {
                 .toolbar { Button("Fechar") { selectedGuide = nil } }
             }
         }
+    }
+
+    private func cardLabel(_ card: MenuCard) -> some View {
+        HStack(spacing: 12) {
+            Text(card.emoji).font(.largeTitle)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(card.title).font(.headline)
+                Text(card.description).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .contentShape(Rectangle())
     }
 }
 
