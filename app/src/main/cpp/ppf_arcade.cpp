@@ -199,6 +199,14 @@ double ppf_arcade_runner_speed(int score) {
     return 220 + std::min(135.0, std::max(0, score) * 0.46);
 }
 
+double ppf_arcade_road_drive_speed(int score, double throttle, double speed, double seconds) {
+    const double cruise = ppf_arcade_runner_speed(score);
+    const double target = cruise * (0.74 + std::min(1.0, std::max(0.0, throttle)) * 0.49);
+    const double dt = std::min(0.1, std::max(0.0, seconds));
+    const double current = speed > 0 ? speed : cruise * 0.58;
+    return current + std::min(dt * 180, std::max(-dt * 245, target - current));
+}
+
 bool ppf_arcade_road_hit(double previous_x, double previous_y, double x, double y,
                          double target_x, double target_y, double height) {
     if (height <= 0) return false;

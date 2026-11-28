@@ -44,6 +44,13 @@ int main() {
     assert(ppf_arcade_add_score(std::numeric_limits<int>::max() - 10, 149)
         == std::numeric_limits<int>::max());
     assert(ppf_arcade_runner_speed(0) == 220 && ppf_arcade_runner_speed(10000) == 355);
+    const double cruising = ppf_arcade_runner_speed(0);
+    const double gaining = ppf_arcade_road_drive_speed(0, 1, cruising, 0.03);
+    const double slowing = ppf_arcade_road_drive_speed(0, 0, cruising, 0.03);
+    assert(gaining > cruising && gaining < cruising * 1.23);
+    assert(slowing < cruising && slowing > cruising * 0.74);
+    assert(ppf_arcade_road_drive_speed(0, 1, cruising, 0) == cruising);
+    assert(ppf_arcade_road_drive_speed(0, 1, 0, 0) == cruising * 0.58);
     assert(ppf_arcade_road_hit(20, 120, 180, 120, 100, 120, 500));
     assert(!ppf_arcade_road_hit(20, 180, 180, 180, 100, 120, 500));
     assert(ppf_arcade_road_hit(100, 180, 100, 60, 100, 120, 500));

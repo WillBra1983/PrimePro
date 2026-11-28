@@ -283,8 +283,14 @@ private final class PrimeArcadeScene: SKScene {
     private let headlight = SKShapeNode()
     private var roadPhoto: SKSpriteNode?
     private var roadsideTrees: [SKSpriteNode] = []
+    private var treeShadows: [SKShapeNode] = []
+    private let roadsideBank = SKShapeNode()
     private var roadDashes: [[SKShapeNode]] = []
     private var roadDistance: CGFloat = 0
+    private var roadSpeed = 0.0
+    private var roadTarget = CGPoint.zero
+    private var roadLean: CGFloat = 0
+    private var wheelRadius: CGFloat = 10
     private var roadTime: TimeInterval = 0
     private var previousRoadPosition = CGPoint.zero
     private var pieces: [PrimeArcadePiece] = []
@@ -412,7 +418,7 @@ private final class PrimeArcadeScene: SKScene {
         installed = true
         backgroundColor = SKColor(red: 0.06, green: 0.10, blue: 0.15, alpha: 1)
         addChild(field)
-        scenery.zPosition = -1
+        scenery.zPosition = flight ? -1 : -10
         field.addChild(scenery)
 
         if mode == .runner {
@@ -533,6 +539,9 @@ private final class PrimeArcadeScene: SKScene {
         positionBoss()
         movePlayer(to: player.position)
         previousRoadPosition = player.position
+        if !flight {
+            roadTarget = CGPoint(x: player.position.x, y: roadY(player.position.x, player.position.y, inverse: true))
+        }
         visualTier = -1
         updateScenery()
     }
@@ -674,21 +683,27 @@ private final class PrimeArcadeScene: SKScene {
             scenery.addChild(clip)
             roadPhoto = photo
         }
-        let shoulder = SKShapeNode(path: roadPolygon(far: size.height * 0.53, near: -size.height * 0.06))
-        shoulder.fillColor = SKColor(red: 0.34, green: 0.39, blue: 0.27, alpha: 1)
-        shoulder.strokeColor = .clear
-        shoulder.zPosition = 0.5
-        scenery.addChild(shoulder)
+        roadsideBank.fillColor = SKColor(red: 0.34, green: 0.39, blue: 0.27, alpha: 1)
+        roadsideBank.strokeColor = .clear
+        roadsideBank.zPosition = 0.5
+        scenery.addChild(roadsideBank)
         roadsideTrees = []
+        treeShadows = []
         if let roadTree {
             roadsideTrees = (0..<18).map { index in
                 let tree = SKSpriteNode(texture: roadTree)
                 let depth = index / 6
-                let width = CGFloat(56 + depth * 37 + (index * 31) % 36)
+                let width = CGFloat(36 + depth * 33 + (index * 31) % 30)
                 tree.size = CGSize(width: width, height: width)
                 tree.anchorPoint = .zero
                 tree.zPosition = 1
                 tree.alpha = CGFloat(155 + 50 * depth) / 255
+                let shadow = SKShapeNode(ellipseOf: CGSize(width: width * 0.18, height: max(3, width * 0.042)))
+                shadow.fillColor = .black.withAlphaComponent(0.25)
+                shadow.strokeColor = .clear
+                shadow.zPosition = 0.9
+                scenery.addChild(shadow)
+                treeShadows.append(shadow)
                 scenery.addChild(tree)
                 return tree
             }
@@ -730,6 +745,11 @@ private final class PrimeArcadeScene: SKScene {
         return path
     }
 
+    private func bankEdge(_ x: CGFloat) -> CGFloat {
+        let ridge = CGFloat(sin(Double(x + roadDistance * 0.12) / 88)) * size.height * 0.012
+        return roadY(x, size.height * 0.576) + ridge
+    }
+
     private func updateRoad() {
         let horizon = size.height * 0.32
         if let photo = roadPhoto {
@@ -738,12 +758,25 @@ private final class PrimeArcadeScene: SKScene {
         }
         let gap = max(138, size.width / 3)
         let cycle = gap * 6
+        let bank = CGMutablePath()
+        bank.move(to: CGPoint(x: 0, y: bankEdge(0)))
+        for index in 1...12 {
+            let x = size.width * CGFloat(index) / 12
+            bank.addLine(to: CGPoint(x: x, y: bankEdge(x)))
+        }
+        bank.addLine(to: CGPoint(x: size.width, y: 0))
+        bank.addLine(to: .zero)
+        bank.closeSubpath()
+        roadsideBank.path = bank
         for (index, tree) in roadsideTrees.enumerated() {
             let depth = CGFloat(index / 6)
             let speed = 0.12 + depth * 0.21
             let raw = (CGFloat(index % 6) * gap + depth * gap / 3 - roadDistance * speed).truncatingRemainder(dividingBy: cycle)
             let x = (raw + cycle).truncatingRemainder(dividingBy: cycle) - gap
-            tree.position = CGPoint(x: x, y: roadY(x + tree.size.width / 2, size.height * (0.57 - depth * 0.025)))
+            let trunk = x + tree.size.width * 0.43
+            let base = min(bankEdge(trunk) - 4, roadY(trunk, size.height * (0.56 - depth * 0.02)))
+            tree.position = CGPoint(x: x, y: base - tree.size.height * 0.045)
+            treeShadows[index].position = CGPoint(x: trunk, y: base + 1)
         }
         for (lane, dashes) in roadDashes.enumerated() {
             let stride = CGFloat(60 + lane * 22)
@@ -782,29 +815,43 @@ private final class PrimeArcadeScene: SKScene {
         let w = source.width * scale, h = source.height * scale
         vehicleSprite.size = CGSize(width: w, height: h)
         vehicleSprite.position = .zero
-        let positions: [(CGFloat, CGFloat, CGFloat)] = [(0.23, 0.81, 0.33), (0.18, 0.77, 0.30), (0.18, 0.77, 0.30)]
+        let positions: [(CGFloat, CGFloat, CGFloat)] = [(0.179, 0.831, 0.294), (0.194, 0.782, 0.328), (0.194, 0.782, 0.328)]
+        wheelRadius = max(1, w * (tier == 0 ? 0.145 : 0.095))
         for (idx, wheel) in wheelMarks.enumerated() {
             wheel.isHidden = mode == .shooter
             let (left, right, y) = positions[tier]
             wheel.position = CGPoint(x: ((idx == 0 ? left : right) - 0.5) * w, y: (y - 0.5) * h)
             let spoke = CGMutablePath()
-            for angle in [0.0, Double.pi / 2] {
-                let dx = CGFloat(cos(angle)) * w * 0.09
-                let dy = CGFloat(sin(angle)) * w * 0.09
-                spoke.move(to: CGPoint(x: -dx, y: -dy))
+            let radius = wheelRadius * 0.68
+            for index in 0..<5 {
+                let angle = Double(index) * .pi * 2 / 5
+                let dx = CGFloat(cos(angle)) * radius
+                let dy = CGFloat(sin(angle)) * radius
+                spoke.move(to: CGPoint(x: dx * 0.19, y: dy * 0.19))
                 spoke.addLine(to: CGPoint(x: dx, y: dy))
             }
             wheel.path = spoke
-            wheel.lineWidth = 0.8
-            wheel.strokeColor = .white.withAlphaComponent(0.28)
+            wheel.lineWidth = 1.4
+            wheel.lineCap = .round
+            wheel.strokeColor = .white.withAlphaComponent(0.75)
         }
     }
 
     private func animateVehicle(_ time: TimeInterval) {
-        let rotation = -(roadDistance / 9).truncatingRemainder(dividingBy: 2 * .pi)
-        wheelMarks.forEach { $0.zRotation = rotation }
+        if !flight {
+            let rotation = -(roadDistance / wheelRadius).truncatingRemainder(dividingBy: 2 * .pi)
+            wheelMarks.forEach { $0.zRotation = rotation }
+            wheelMarks[1].xScale = 1 - min(0.19, abs(roadLean) * 0.02)
+            vehicleSprite.zRotation = roadLean * .pi / 180
+            headlight.zRotation = vehicleSprite.zRotation
+            let level = roadY(player.position.x, player.position.y, inverse: true)
+            let depth = (laneY(0) - level) / max(1, laneY(0) - laneY(2))
+            vehicleSprite.setScale(0.89 + 0.2 * depth)
+            vehicleSprite.position.y = CGFloat(sin(Double(roadDistance) / 15)) * 1.25
+        }
         for (index, puff) in exhaust.enumerated() {
-            let life = ((mode == .runner ? roadTime : time) * 2.2 + Double(index) / 6).truncatingRemainder(dividingBy: 1)
+            let motion = mode == .runner ? Double(roadDistance) / 100 : time * 2.2
+            let life = (motion + Double(index) / 6).truncatingRemainder(dividingBy: 1)
             let p = CGFloat(life)
             puff.isHidden = false
             puff.position = mode == .runner
@@ -946,7 +993,10 @@ private final class PrimeArcadeScene: SKScene {
 
     private func launch(at center: CGPoint, velocity: CGVector, hostile: Bool, number: Int = 4) {
         let shot = PrimeArcadeBolt(at: center, velocity: velocity, hostile: hostile, number: number)
-        if !flight { shot.roadLevel = roadY(center.x, center.y, inverse: true) }
+        if !flight {
+            shot.zPosition = 3
+            shot.roadLevel = roadY(center.x, center.y, inverse: true)
+        }
         field.addChild(shot)
         shots.append(shot)
     }
@@ -987,6 +1037,8 @@ private final class PrimeArcadeScene: SKScene {
         visualTier = -1
         roadTime = Double(index % 2) * 28
         roadDistance = 0
+        roadSpeed = 0
+        roadLean = 0
         children.filter { $0.name == "roadBurst" }.forEach { $0.removeFromParent() }
         played = false
         sinceSave = 0
@@ -1024,6 +1076,7 @@ private final class PrimeArcadeScene: SKScene {
         movePlayer(to: CGPoint(x: mode == .runner ? size.width * 0.30 : size.width / 2,
                                y: mode == .runner ? roadY(size.width * 0.30, laneY(1)) : CGFloat(arcadeRules.ship_y)))
         previousRoadPosition = player.position
+        if !flight { roadTarget = CGPoint(x: player.position.x, y: laneY(1)) }
     }
 
     private func setPrompt() {
@@ -1036,7 +1089,7 @@ private final class PrimeArcadeScene: SKScene {
         let previousCount = steeringTouches.count
         steeringTouches.formUnion(touches)
         rebaseSteering()
-        if flight && previousCount < 2 && firing {
+        if previousCount < 2 && firing {
             pendingShot = true
             shoot()
             playEffect("ppf_pm_tap")
@@ -1045,10 +1098,13 @@ private final class PrimeArcadeScene: SKScene {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard running, let center = steeringCenter(), let previous = lastTouchCenter else { return }
-        let targetX = player.position.x + center.x - previous.x
-        let targetY = flight ? player.position.y + center.y - previous.y
-            : roadY(targetX, roadY(player.position.x, player.position.y, inverse: true) + center.y - previous.y)
-        movePlayer(to: CGPoint(x: targetX, y: targetY))
+        let dx = center.x - previous.x, dy = center.y - previous.y
+        if flight {
+            movePlayer(to: CGPoint(x: player.position.x + dx, y: player.position.y + dy))
+        } else {
+            roadTarget.x = min(size.width * 0.64, max(min(size.width * 0.30, 44), roadTarget.x + dx))
+            roadTarget.y = min(laneY(0), max(laneY(2), roadTarget.y + dy))
+        }
         lastTouchCenter = center
     }
 
@@ -1067,7 +1123,7 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     private func rebaseSteering() {
-        if flight, pilotTouch.map({ steeringTouches.contains($0) }) != true {
+        if pilotTouch.map({ steeringTouches.contains($0) }) != true {
             pilotTouch = steeringTouches.min(by: { $0.timestamp < $1.timestamp })
         }
         lastTouchCenter = steeringCenter()
@@ -1075,14 +1131,7 @@ private final class PrimeArcadeScene: SKScene {
     }
 
     private func steeringCenter() -> CGPoint? {
-        guard !steeringTouches.isEmpty else { return nil }
-        if flight { return pilotTouch?.location(in: self) }
-        let total = steeringTouches.reduce(CGPoint.zero) { sum, touch in
-            let point = touch.location(in: self)
-            return CGPoint(x: sum.x + point.x, y: sum.y + point.y)
-        }
-        let count = CGFloat(steeringTouches.count)
-        return CGPoint(x: total.x / count, y: total.y / count)
+        pilotTouch?.location(in: self)
     }
 
     private func movePlayer(to target: CGPoint) {
@@ -1134,14 +1183,13 @@ private final class PrimeArcadeScene: SKScene {
         shieldRing.glowWidth = shieldFlashing ? 10 : 5
         if firing || pendingShot { shoot() }
         if spawnIn <= 0 && (!flight || bossHealth < 0) { spawn() }
-        animateVehicle(currentTime)
-
         if mode == .runner {
             updateRunner(delta)
         } else {
             updateFlight(delta)
             if lives > 0 && bossHealth < 0 && phaseElapsed >= phaseDuration - 0.00001 { startBoss() }
         }
+        animateVehicle(currentTime)
         pieces.removeAll { $0.parent == nil }
         shots.removeAll { $0.parent == nil }
         _ = completePhaseIfNeeded()
@@ -1155,7 +1203,16 @@ private final class PrimeArcadeScene: SKScene {
 
     private func updateRunner(_ delta: TimeInterval) {
         roadTime += delta
-        let distance = CGFloat(delta * ppf_arcade_runner_speed(pace))
+        let level = roadY(player.position.x, player.position.y, inverse: true)
+        let desiredLean = min(9, max(-9, (roadTarget.y - level) / 5))
+        roadLean += (desiredLean - roadLean) * min(1, CGFloat(delta) * 12)
+        let pull = CGFloat(1 - exp(-delta * 15))
+        let x = player.position.x + (roadTarget.x - player.position.x) * pull
+        movePlayer(to: CGPoint(x: x, y: roadY(x, level + (roadTarget.y - level) * pull)))
+        let left = min(size.width * 0.30, 44)
+        let throttle = (x - left) / max(1, size.width * 0.64 - left)
+        roadSpeed = ppf_arcade_road_drive_speed(pace, Double(throttle), roadSpeed, delta)
+        let distance = CGFloat(delta * roadSpeed)
         roadDistance += distance
         for shot in shots where shot.parent != nil {
             if !advance(shot, delta: delta) { continue }
@@ -1546,10 +1603,15 @@ private final class PrimeArcadeScene: SKScene {
             let x = margin + (size.width - 2 * margin) * CGFloat(draw.lane) / CGFloat(PPF_ARCADE_LANE_MAX)
             piece.position = CGPoint(x: x, y: size.height + CGFloat(arcadeRules.spawn_margin))
         } else {
+            piece.zPosition = 1
             piece.roadLevel = laneY(Int(draw.lane))
             piece.position = CGPoint(x: size.width + 34, y: roadY(size.width + 34, piece.roadLevel))
-            let radius = min(21, size.height * 0.049)
+            let radius = min(22, size.height * 0.049)
             piece.path = CGPath(ellipseIn: CGRect(x: -radius, y: -radius, width: radius * 2, height: radius * 2), transform: nil)
+            piece.fillColor = draw.prime ? SKColor(red: 0.07, green: 0.36, blue: 0.31, alpha: 1)
+                : SKColor(red: 0.56, green: 0.20, blue: 0.16, alpha: 1)
+            piece.strokeColor = role == Int32(PPF_ARCADE_ARMED) ? .systemOrange : .white.withAlphaComponent(0.87)
+            piece.lineWidth = 2
             if role == Int32(PPF_ARCADE_ARMED), let texture = vehicleTextures[2] {
                 let car = SKSpriteNode(texture: texture)
                 car.size = CGSize(width: 70, height: 34)

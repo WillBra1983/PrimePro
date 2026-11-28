@@ -140,6 +140,12 @@ Java_com_primeprofast_app_MainActivity_arcadeRunnerSpeedNativo(JNIEnv*, jclass, 
     return ppf_arcade_runner_speed(score);
 }
 
+extern "C" JNIEXPORT jdouble JNICALL
+Java_com_primeprofast_app_MainActivity_arcadeRoadDriveSpeedNativo(JNIEnv*, jclass, jint score,
+                                                                  jdouble throttle, jdouble speed, jdouble seconds) {
+    return ppf_arcade_road_drive_speed(score, throttle, speed, seconds);
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_primeprofast_app_MainActivity_arcadeRoadHitNativo(JNIEnv*, jclass, jdouble previousX,
     jdouble previousY, jdouble x, jdouble y, jdouble targetX, jdouble targetY, jdouble height) {

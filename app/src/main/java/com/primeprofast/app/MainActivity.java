@@ -410,6 +410,7 @@ public class MainActivity extends AppCompatActivity {
     private static native int[] arcadeRulesNativo();
     private static native int[] arcadeSpawnNativo(boolean flight, int score, int seed, int previous);
     private static native double arcadeRunnerSpeedNativo(int score);
+    private static native double arcadeRoadDriveSpeedNativo(int score, double throttle, double speed, double seconds);
     private static native boolean arcadeRoadHitNativo(double previousX, double previousY, double x, double y,
             double targetX, double targetY, double height);
     private static native double arcadeJumpHeightNativo(double seconds);
@@ -6995,14 +6996,15 @@ public class MainActivity extends AppCompatActivity {
         private final ArrayList<PrimeRunnerNumero> numeros = new ArrayList<>();
         private final ArrayList<PrimeShooterShot> disparos = new ArrayList<>();
         private boolean roadFire;
-        private float fireX, fireY;
+        private boolean roadPendingShot;
         private long roadShotAt;
         private long lastFrameMs, playTimeMs, nextSpawnMs, pulseUntilMs, burstAt;
         private int previousNumber, pontuacao, bestScore;
         private float carX, carY, touchX, touchY, burstX, burstY;
         private float previousCarX, previousCarY;
+        private float targetCarX, targetCarY, lean;
         private int pointer = -1;
-        private double travel;
+        private double travel, roadSpeed;
         private boolean gameOver, running;
         private String pulseText = "";
         private int pulseColor = Color.WHITE;
@@ -7024,6 +7026,8 @@ public class MainActivity extends AppCompatActivity {
             carY = laneY(1);
             previousCarX = carX;
             previousCarY = carY;
+            targetCarX = carX;
+            targetCarY = carY;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 int center = (int) laneY(1);
                 setSystemGestureExclusionRects(java.util.Collections.singletonList(new android.graphics.Rect(
@@ -7035,6 +7039,7 @@ public class MainActivity extends AppCompatActivity {
             numeros.clear();
             disparos.clear();
             roadFire = false;
+            roadPendingShot = false;
             roadShotAt = 0;
             lastFrameMs = 0;
             playTimeMs = 0;
@@ -7045,11 +7050,15 @@ public class MainActivity extends AppCompatActivity {
             pontuacao = 0;
             phase.reset(0, 0);
             travel = 0;
+            roadSpeed = 0;
+            lean = 0;
             pointer = -1;
             carX = getWidth() * 0.30f;
             carY = laneY(1);
             previousCarX = carX;
             previousCarY = carY;
+            targetCarX = carX;
+            targetCarY = carY;
             gameOver = false;
             running = false;
             pulseText = "";
@@ -7059,6 +7068,7 @@ public class MainActivity extends AppCompatActivity {
         void pausar() {
             running = false;
             roadFire = false;
+            roadPendingShot = false;
             pointer = -1;
             lastFrameMs = 0;
             salvarRecorde();
@@ -7077,12 +7087,8 @@ public class MainActivity extends AppCompatActivity {
             int action = event.getActionMasked();
             if (action != MotionEvent.ACTION_MOVE) roadFire = false;
             if (action == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
-                fireX = (event.getX(0) + event.getX(1)) / 2;
-                fireY = (event.getY(0) + event.getY(1)) / 2;
-            } else if (action == MotionEvent.ACTION_MOVE && event.getPointerCount() == 2) {
-                float cx = (event.getX(0) + event.getX(1)) / 2;
-                float cy = (event.getY(0) + event.getY(1)) / 2;
-                roadFire |= Math.hypot(cx - fireX, cy - fireY) >= dpUi(4);
+                roadFire = true;
+                roadPendingShot = true;
             }
             if (action == MotionEvent.ACTION_DOWN) {
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
@@ -7095,8 +7101,8 @@ public class MainActivity extends AppCompatActivity {
                 if (index >= 0 && running && !gameOver) {
                     float x = event.getX(index), y = event.getY(index);
                     float left = Math.min(getWidth() * 0.30f, dpUi(44));
-                    carX = Math.max(left, Math.min(getWidth() * 0.64f, carX + x - touchX));
-                    carY = Math.max(laneY(0), Math.min(laneY(2), carY + y - touchY));
+                    targetCarX = Math.max(left, Math.min(getWidth() * 0.64f, targetCarX + x - touchX));
+                    targetCarY = Math.max(laneY(0), Math.min(laneY(2), targetCarY + y - touchY));
                     touchX = x;
                     touchY = y;
                     invalidate();
@@ -7108,6 +7114,7 @@ public class MainActivity extends AppCompatActivity {
                 touchX = event.getX(next);
                 touchY = event.getY(next);
             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                if (action == MotionEvent.ACTION_CANCEL) roadPendingShot = false;
                 pointer = -1;
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
             }
@@ -7145,6 +7152,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             desenharPista(canvas, w, h);
+            desenharNumeros(canvas);
             for (PrimeShooterShot shot : disparos) {
                 float sy = roadY(shot.x, shot.y);
                 paint.setColor(shot.hostile ? 0xFFFF806F : 0xFFFFE49A);
@@ -7152,15 +7160,21 @@ public class MainActivity extends AppCompatActivity {
                     paint.setStrokeWidth(dpUi(5));
                     canvas.drawLine(shot.x, sy, shot.x + dpUi(34), roadY(shot.x + dpUi(34), shot.y), paint);
                     canvas.drawCircle(shot.x, sy, dpUi(13), paint);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dpUi(2));
+                    paint.setColor(0xFFFFD198);
+                    canvas.drawCircle(shot.x, sy, dpUi(13), paint);
+                    paint.setStyle(Paint.Style.FILL);
                     paint.setTextAlign(Paint.Align.CENTER);
                     paint.setTextSize(dpUi(11));
                     paint.setColor(0xFF230914);
                     canvas.drawText(String.valueOf(shot.number), shot.x, sy + dpUi(4), paint);
                 } else {
-                    canvas.drawRoundRect(shot.x - dpUi(12), sy - dpUi(3), shot.x + dpUi(12), sy + dpUi(3), dpUi(3), dpUi(3), paint);
+                    canvas.drawRoundRect(shot.x - dpUi(14), sy - dpUi(4), shot.x + dpUi(14), sy + dpUi(4), dpUi(4), dpUi(4), paint);
+                    paint.setColor(Color.WHITE);
+                    canvas.drawRoundRect(shot.x - dpUi(10), sy - dpUi(2), shot.x + dpUi(12), sy + dpUi(2), dpUi(2), dpUi(2), paint);
                 }
             }
-            desenharNumeros(canvas);
             float departure = phase.exitProgress(now);
             if (departure < 1 || phase.outcome == ArcadePhase.CRASHED) {
                 canvas.save();
@@ -7186,10 +7200,19 @@ public class MainActivity extends AppCompatActivity {
 
         private void atualizar(float dt, long now, int w) {
             float density = getResources().getDisplayMetrics().density;
-            float distance = (float) arcadeRunnerSpeedNativo(phase.pace()) * density * dt;
+            float desiredLean = Math.max(-9f, Math.min(9f, (targetCarY - carY) / dpUi(5)));
+            lean += (desiredLean - lean) * Math.min(1f, dt * 12);
+            float pull = 1f - (float) Math.exp(-dt * 15);
+            carX += (targetCarX - carX) * pull;
+            carY += (targetCarY - carY) * pull;
+            float left = Math.min(w * .30f, dpUi(44));
+            double throttle = (carX - left) / Math.max(1, w * .64f - left);
+            roadSpeed = arcadeRoadDriveSpeedNativo(phase.pace(), throttle, roadSpeed, dt);
+            float distance = (float) roadSpeed * density * dt;
             travel += distance;
-            if (roadFire && playTimeMs >= roadShotAt) {
+            if ((roadFire || roadPendingShot) && playTimeMs >= roadShotAt) {
                 disparos.add(new PrimeShooterShot(carX + dpUi(33), carY, 490 * density, 0, false));
+                roadPendingShot = false;
                 roadShotAt = playTimeMs + 240;
             }
             if (playTimeMs >= nextSpawnMs) {
@@ -7338,6 +7361,10 @@ public class MainActivity extends AppCompatActivity {
             return center + (y - center) * (1 - .38f * along) - getHeight() * .028f * along;
         }
 
+        private float bankEdge(float x, int h) {
+            return roadY(x, h * .424f) - (float) Math.sin((x + travel * .12) / dpUi(88)) * h * .012f;
+        }
+
         private void desenharPista(Canvas c, int w, int h) {
             c.drawColor(0xFF55717E);
             paint.setAlpha(255);
@@ -7356,7 +7383,15 @@ public class MainActivity extends AppCompatActivity {
             }
 
             paint.setColor(0xFF566345);
-            Path ground = roadPolygon(w, h * .47f, h * 1.06f);
+            Path ground = new Path();
+            ground.moveTo(0, bankEdge(0, h));
+            for (int i = 1; i <= 12; i++) {
+                float section = w * i / 12f;
+                ground.lineTo(section, bankEdge(section, h));
+            }
+            ground.lineTo(w, h);
+            ground.lineTo(0, h);
+            ground.close();
             c.drawPath(ground, paint);
             if (arvore != null) {
                 float gap = Math.max(dpUi(138), w / 3f);
@@ -7365,10 +7400,15 @@ public class MainActivity extends AppCompatActivity {
                     for (int i = 0; i < 6; i++) {
                         float x = (float) (((i * gap + depth * gap / 3 - travel * (.12 + depth * .21))
                             % cycle + cycle) % cycle) - gap;
-                        float size = dpUi(56 + depth * 37 + (i * 31) % 36);
-                        float y = roadY(x + size / 2, h * (.43f + depth * .025f));
+                        float size = dpUi(36 + depth * 33 + (i * 31) % 30);
+                        float trunk = x + size * .43f;
+                        float base = Math.max(bankEdge(trunk, h) + dpUi(4), roadY(trunk, h * (.44f + depth * .02f)));
+                        paint.setColor(0x42000000);
+                        c.drawOval(trunk - size * .09f, base - size * .024f,
+                            trunk + size * .09f, base + size * .024f, paint);
                         paint.setAlpha(155 + 50 * depth);
-                        c.drawBitmap(arvore, null, new RectF(x, y - size, x + size, y), paint);
+                        float bottom = base + size * .045f;
+                        c.drawBitmap(arvore, null, new RectF(x, bottom - size, x + size, bottom), paint);
                     }
                 }
                 paint.setAlpha(255);
@@ -7416,7 +7456,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         private void desenharNumeros(Canvas c) {
-            float radius = Math.min(dpUi(21), getHeight() * 0.049f);
+            float radius = Math.min(dpUi(22), getHeight() * 0.049f);
             for (PrimeRunnerNumero n : numeros) {
                 float y = roadY(n.x, n.y);
                 if (n.role == ARCADE_ARMED) {
@@ -7432,7 +7472,9 @@ public class MainActivity extends AppCompatActivity {
                         dpUi(8), dpUi(8), paint);
                     paint.setStyle(Paint.Style.FILL);
                 }
-                paint.setColor(n.prime ? 0xFF137769 : 0xFFA54233);
+                paint.setColor(0x94030A0C);
+                c.drawCircle(n.x, y + dpUi(2), radius + dpUi(2), paint);
+                paint.setColor(n.prime ? 0xFF125D50 : 0xFF8F3429);
                 c.drawCircle(n.x, y, radius, paint);
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth(dpUi(2));
@@ -7464,7 +7506,16 @@ public class MainActivity extends AppCompatActivity {
             }
             paint.setColor(0x80000000);
             c.drawOval(carX - dpUi(33), carY + body - dpUi(7), carX + dpUi(33), carY + body + dpUi(3), paint);
-            if (playTimeMs > 0) desenharEscapeArcade(c, carX - dpUi(37), carY + body * 0.45f, playTimeMs, false, paint);
+            if (travel > 0) {
+                long exhaustTime = (long) (travel / dpUi(1) * 4.5);
+                desenharEscapeArcade(c, carX - dpUi(37), carY + body * 0.45f, exhaustTime, false, paint);
+            }
+            float depth = (carY - laneY(0)) / Math.max(1, laneY(2) - laneY(0));
+            float perspective = .89f + depth * .20f;
+            c.save();
+            c.translate(0, (float) Math.sin(travel / dpUi(15)) * dpUi(1) * 1.25f);
+            c.rotate(lean, carX, carY);
+            c.scale(perspective, perspective, carX, carY);
             paint.setColor(Color.WHITE);
             RectF area = new RectF(carX - dpUi(41), carY - body, carX + dpUi(41), carY + body);
             if (desenharVeiculo(c, veiculos[tier], area, paint)) {
@@ -7473,6 +7524,7 @@ public class MainActivity extends AppCompatActivity {
                 paint.setColor(0xFF578DBC);
                 c.drawRoundRect(area, dpUi(8), dpUi(8), paint);
             }
+            c.restore();
         }
 
         private void desenharExplosao(Canvas c, long now) {
@@ -7501,17 +7553,27 @@ public class MainActivity extends AppCompatActivity {
             float width = sprite.getWidth() * scale;
             float height = sprite.getHeight() * scale;
             float left = area.centerX() - width / 2f;
-            float y = area.bottom - height * (tier == 0 ? 0.33f : 0.30f);
-            paint.setColor(0x4DFFFFFF);
-            paint.setStrokeWidth(dpUi(1));
+            float y = area.centerY() + height * (tier == 0 ? 0.206f : 0.172f);
+            float outer = Math.max(1, width * (tier == 0 ? .145f : .095f));
+            float radius = outer * .68f;
             for (int i = 0; i < 2; i++) {
-                float hub = i == 0 ? (tier == 0 ? 0.23f : 0.18f) : (tier == 0 ? 0.81f : 0.77f);
+                float hub = i == 0 ? (tier == 0 ? 0.179f : 0.194f) : (tier == 0 ? 0.831f : 0.782f);
                 float x = left + width * hub;
                 canvas.save();
-                canvas.rotate((float) (Math.toDegrees(travel / dpUi(9)) % 360), x, y);
-                float raio = width * 0.085f;
-                canvas.drawLine(x - raio, y, x + raio, y, paint);
-                canvas.drawLine(x, y - raio, x, y + raio, paint);
+                if (i == 1) canvas.scale(1 - Math.min(.19f, Math.abs(lean) * .02f), 1, x, y);
+                paint.setColor(0x700E151A);
+                canvas.drawCircle(x, y, radius, paint);
+                canvas.rotate((float) (Math.toDegrees(travel / outer) % 360), x, y);
+                paint.setColor(0xC7E8EEF0);
+                paint.setStrokeWidth(dpUi(1) * 1.4f);
+                paint.setStrokeCap(Paint.Cap.ROUND);
+                for (int spoke = 0; spoke < 5; spoke++) {
+                    double angle = spoke * Math.PI * 2 / 5;
+                    float dx = (float) Math.cos(angle) * radius, dy = (float) Math.sin(angle) * radius;
+                    canvas.drawLine(x + dx * .19f, y + dy * .19f, x + dx, y + dy, paint);
+                }
+                paint.setStrokeCap(Paint.Cap.BUTT);
+                canvas.drawCircle(x, y, Math.max(1, radius * .19f), paint);
                 canvas.restore();
             }
         }

@@ -134,6 +134,7 @@ enum {
 PPFArcadeRules ppf_arcade_rules(void);
 PPFArcadeSpawn ppf_arcade_spawn(bool flight, int score, uint32_t seed, int previous_number);
 double ppf_arcade_runner_speed(int score);
+double ppf_arcade_road_drive_speed(int score, double throttle, double speed, double seconds);
 bool ppf_arcade_road_hit(double previous_x, double previous_y, double x, double y,
                          double target_x, double target_y, double height);
 double ppf_arcade_jump_height(double seconds);
